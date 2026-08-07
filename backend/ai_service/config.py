@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 AI_SERVICE_ROOT = Path(__file__).resolve().parent
+DEFAULT_LLM_MODEL = "gemini-2.5-flash-lite"
 
 
 class AISettings(BaseSettings):
@@ -19,7 +20,7 @@ class AISettings(BaseSettings):
 
     # Gemini API Key & Model (free tier available at aistudio.google.com)
     gemini_api_key: str | None = None
-    llm_model: str = "gemini-2.5-flash-lite"
+    llm_model: str = DEFAULT_LLM_MODEL
 
     # Optional admin key to secure the /admin/reindex endpoint
     admin_reindex_key: str | None = None

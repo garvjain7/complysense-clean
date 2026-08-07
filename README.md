@@ -1,140 +1,252 @@
-# ComplySense — AI-Powered GRC Platform
+# ComplySense
 
-ComplySense is a premium, enterprise-grade Governance, Risk, and Compliance (GRC) platform designed to streamline compliance management, technical controls monitoring, audit processes, and policy orchestration. Supported by a dual-backend architecture, it combines standard CRUD features with AI-powered agents for automated triaging, document summarization, incident reporting (CERT-In), and semantic search.
+ComplySense is an AI-assisted Governance, Risk, and Compliance platform for institutions that need to manage controls, evidence, assessments, vendors, incidents, policies, audits, notifications, and role-specific compliance workflows from one workspace.
 
----
+The project is a full-stack application with a React/Vite frontend, a FastAPI main API, and a separate FastAPI AI service for role-aware chat, RAG retrieval, document context, and regulatory guidance.
 
-## 🚀 Key Features
+## What It Includes
 
-* **Fine-Grained Role-Based Access Control (RBAC):** Supports 9 distinct organizational and administrative roles with distinct dashboards, custom navigation menus, and specialized workflows:
-  * *Administrative:* Super Admin, Institution Admin
-  * *Compliance & Risk:* Compliance Officer, Auditor, Read-Only Assessor
-  * *Operations:* IT Security Officer, Department Reviewer, Vendor Reviewer, Policy Approver
-* **Role Assumption / Impersonation:** Privileged administrative accounts can temporarily swap active context to preview views and permissions of standard roles. Fully monitored and audited.
-* **Brute-Force Account Protection:** Standard API-enforced and frontend-synced lockout mechanism that restricts logins after 3 consecutive failures, with an active countdown block timer.
-* **RAG & Agentic AI Capabilities:** Powered by LangChain, OpenAI, and a FAISS semantic index for AI-supported regulatory changes triage, automated security incident report drafts (CERT-In template), and semantic Q&A.
-* **State-of-the-Art Interface:** Designed with curated dark/light palettes, glassmorphism, responsive sidebar layout, real-time unread/pending notification counters, and modern micro-animations.
+- Role-based dashboards and route guards for 9 roles:
+  - Super Admin
+  - Institution Admin
+  - Compliance Officer
+  - IT Security Officer
+  - Auditor
+  - Department Reviewer
+  - Vendor Reviewer
+  - Policy Approver
+  - Read-Only Assessor
+- Authentication with refresh sessions, password reset, login throttling, and account unlock flows.
+- Core GRC modules for controls, assessments, gaps, evidence, policies, vendors, incidents, tasks, departments, institutions, users, notifications, calendars, and audit logs.
+- Operational audit trail logging across major system actions.
+- Role-specific AI assistants routed through the main API and backed by the AI service.
+- Hybrid RAG using local FAISS and BM25 indexes, local sentence-transformer embeddings, Supabase-hosted knowledge files, MongoDB document metadata, and Gemini model responses.
+- Frontend pages, navigation, and shared components tailored to each organizational role.
 
----
+## Architecture
 
-## 🛠️ Technology Stack
+```text
+ComplySense
++-- Frontend: React 19 + TypeScript + Vite
++-- Main API: FastAPI + PostgreSQL + MongoDB + Supabase
+`-- AI Service: FastAPI + Gemini + LangChain + FAISS + BM25
+```
+
+The main API exposes business endpoints under `/api/v1/*` and proxies role-specific AI requests under `/api/v1/ai/*`. The AI service runs separately on port `8001` and owns retrieval, prompt construction, model calls, and RAG index lifecycle.
+
+## Tech Stack
 
 ### Frontend
-* **Core:** React 19 (TypeScript), Vite 6
-* **Routing & Guards:** React Router 7 with role-locked declarative route wrappers
-* **State Management:** Zustand 5 for lightweight reactive stores (Authentication, Notifications)
-* **Styling:** Custom Vanilla CSS design system (`styles.css`) for fine-grained glassmorphic aesthetics, fluid transitions, and typography
 
-### Main API (Backend)
-* **Framework:** FastAPI
-* **Relational DB:** PostgreSQL (via Neon or local) with SQLAlchemy Async IO and Asyncpg
-* **Document DB:** MongoDB (via Atlas or local) with Motor for control library storage and schema-less data
-* **Storage:** Supabase Storage (knowledge-base file assets bucket)
+- React 19
+- TypeScript
+- Vite 6
+- React Router 7
+- Zustand
+- Axios
+- Radix UI primitives
+- Lucide React icons
+- Recharts
+- Custom CSS design system in `frontend/src/styles.css`
 
-### AI Service (Backend)
-* **Framework:** FastAPI
-* **Orchestration:** LangChain & LangChain-OpenAI
-* **Vector Store:** FAISS for local CPU-based semantic retrieval
+### Backend
 
----
+- FastAPI
+- SQLAlchemy Async IO
+- Asyncpg
+- PostgreSQL
+- MongoDB with Motor
+- Supabase Storage
+- Pydantic Settings
+- JWT/session authentication
+- Structured logging
 
-## 📂 Project Directory Structure
+### AI and Retrieval
+
+- Gemini via `langchain-google-genai`
+- LangChain
+- FAISS
+- BM25
+- Sentence Transformers with `BAAI/bge-m3`
+- Local vectorstore artifacts in `backend/ai_service/vectorstore`
+- Knowledge base markdown files in `backend/ai_service/knowledge-base`
+
+## Repository Layout
 
 ```text
 complysense-clean/
-├── package.json                   # Root workspace scripts (run frontend & backend concurrently)
-├── schema.sql                     # PostgreSQL DDL schema definition (28 tables)
-├── docs/                          # Specifications and logs
-│   ├── design-review.md           # Living Architectural Decision Log (ADL)
-│   └── masterplan.md              # Global system implementation plan
-├── backend/                       # Python Backends
-│   ├── requirements.txt           # Python dependency specifications
-│   ├── app/                       # Main FastAPI REST API
-│   │   ├── main.py                # Server entry point
-│   │   ├── config.py              # Environment configuration loader
-│   │   ├── database.py            # PostgreSQL connection pool
-│   │   ├── routers/               # API route definitions (auth, users, audits, etc.)
-│   │   ├── repositories/          # Data access layer (SQLAlchemy + Motor)
-│   │   └── services/              # Domain logic & transactional workflows
-│   └── ai_service/                # FastAPI AI service wrapper
-│       ├── main.py                # RAG & agent backend entry point
-│       ├── rag/                   # FAISS indexing & retrieval logic
-│       └── routers/               # AI endpoint handlers
-└── frontend/                      # React SPA Workspace
-    ├── package.json               # Frontend dependencies & Vite scripts
-    ├── tsconfig.json              # TypeScript compilation setup
-    ├── src/
-    │   ├── main.tsx               # App mounting point
-    │   ├── App.tsx                # Context providers & router registration
-    │   ├── styles.css             # Main styling system (tokens, components, themes)
-    │   ├── components/            # Shared layouts, notifications, and navigation
-    │   │   └── shared/
-    │   │       ├── Sidebar.tsx    # Role-aware nav menus & dynamic state badges
-    │   │       ├── Topbar.tsx     # Session banner & role assumption toggle
-    │   │       └── Toast.tsx      # Global notification banners
-    │   ├── layouts/               # Dashboard & Auth layout shells
-    │   ├── pages/                 # Routing pages group by organizational role
-    │   ├── store/                 # Zustand state managers (auth, notifications)
-    │   └── routes/                # Private & public route guard mappings
++-- README.md
++-- package.json                 # Root scripts for installing and running all services
++-- .env.example                 # Environment variable template
++-- schema.sql                   # PostgreSQL schema snapshot
++-- seed.py                      # Seed data helper
++-- docs/                        # Architecture notes, UI specs, contracts, audits
++-- backend/
+|   +-- requirements.txt
+|   +-- app/                     # Main FastAPI API
+|   |   +-- main.py
+|   |   +-- config.py
+|   |   +-- database.py
+|   |   +-- mongodb.py
+|   |   +-- routers/
+|   |   +-- repositories/
+|   |   +-- services/
+|   |   +-- schemas/
+|   |   `-- core/
+|   +-- ai_service/              # Independent FastAPI AI/RAG service
+|   |   +-- main.py
+|   |   +-- config.py
+|   |   +-- agents/
+|   |   +-- rag/
+|   |   +-- routers/
+|   |   +-- prompts/
+|   |   +-- knowledge-base/
+|   |   `-- vectorstore/
+|   +-- migrations/
+|   `-- tests/
+`-- frontend/
+    +-- package.json
+    +-- index.html
+    `-- src/
+        +-- App.tsx
+        +-- main.tsx
+        +-- styles.css
+        +-- components/
+        +-- hooks/
+        +-- layouts/
+        +-- lib/
+        +-- pages/
+        +-- routes/
+        +-- store/
+        `-- types/
 ```
 
----
+## Prerequisites
 
-## ⚙️ Environment Configuration
+- Node.js 20 or newer
+- npm
+- Python 3.11 or newer
+- PostgreSQL database
+- MongoDB database
+- Supabase project and storage bucket
+- Gemini API key for AI features
 
-Copy the root environment example to configure both backend and frontend targets:
+## Environment Setup
+
+Copy the example environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-Ensure the following variables are filled in:
-1. `DATABASE_URL`: Asynchronous PostgreSQL connection string (`postgresql+asyncpg://...`)
-2. `MONGODB_URI`: MongoDB connection string
-3. `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`: Credentials for knowledge storage
-4. `SECRET_KEY`: Secret string used to sign session cookies and JWTs
-5. `OPENAI_API_KEY`: API key for GPT models utilized by LangChain
+Fill in the required values:
 
----
+```env
+DATABASE_URL=postgresql+asyncpg://user:password@host/complysense?ssl=require
+MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/complysense
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=your-service-role-key
+SECRET_KEY=replace-with-a-strong-secret-at-least-32-characters
+GEMINI_API_KEY=your-gemini-api-key
+LLM_MODEL=gemini-2.5-flash-lite
+AI_SERVICE_URL=http://localhost:8001
+MAIN_API_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8000
+FRONTEND_URL=http://localhost:5173
+```
 
-## 🏃 Run & Installation
+Optional values include SMTP credentials for password reset email delivery and `ADMIN_REINDEX_KEY` for protecting AI reindex operations.
 
-### 1. Root & Frontend Installation
-Install the Node.js packages for the workspace runner and the React SPA:
+## Install
+
+Install root and frontend dependencies:
 
 ```bash
 npm run install:all
 ```
 
-### 2. Python Backend Setup
-Install Python dependencies for both the Main API and the AI service:
+Install Python dependencies:
 
 ```bash
 npm run install:python
 ```
 
-### 3. Database Initialization
-Prepare the target PostgreSQL database and run the schema initialization:
+## Database Setup
+
+Create a PostgreSQL database, then apply the schema:
 
 ```bash
-psql -h <host> -U <user> -d <db_name> -f schema.sql
+psql -h <host> -U <user> -d <database> -f schema.sql
 ```
 
-### 4. Running the Platform
-Start the frontend dev server, Main FastAPI backend, and AI service concurrently with a single command from the root directory:
+If you need local demo data, review and run:
+
+```bash
+python seed.py
+```
+
+## Run Locally
+
+Start the frontend, main API, and AI service together:
 
 ```bash
 npm run dev
 ```
 
-* **Frontend Dashboard:** [http://localhost:5173](http://localhost:5173)
-* **Main API Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
-* **AI Service Docs:** [http://localhost:8001/docs](http://localhost:8001/docs)
+Service URLs:
 
----
+- Frontend: http://localhost:5173
+- Main API docs: http://localhost:8000/docs
+- AI Service docs: http://localhost:8001/docs
+- AI readiness: http://localhost:8001/health/ready
 
-## 📘 Development Standards & Guidelines
+You can also run each service separately:
 
-* **Design Review & Log:** All structural decisions, database migrations, security changes, and custom endpoints must be documented inside [design-review.md](file:///c:/Users/hp/Desktop/complysense-clean/docs/design-review.md). Refer to this log to examine past modifications.
-* **CSS tokens:** Do not inject inline styles or external design libraries. Utilize the custom design system in `styles.css`.
-* **DRY Navigation:** Do not define hardcoded nav arrays inside route configuration files. All route options are centrally resolved based on user context in `Sidebar.tsx`.
+```bash
+npm run dev:frontend
+npm run dev:backend
+npm run dev:ai
+```
+
+## Useful Commands
+
+```bash
+npm run build        # Type-check and build the frontend
+npm run typecheck    # Run frontend TypeScript checks
+npm run lint         # Run frontend ESLint
+```
+
+Backend tests can be run from the repository root or the `backend` folder, depending on the test target:
+
+```bash
+python -m pytest backend/tests
+```
+
+## AI Service Notes
+
+The AI service loads FAISS and BM25 indexes during startup. If existing vectorstore files are present, they are loaded into memory. If not, the service attempts a cold-start reindex from the configured knowledge sources.
+
+Important local paths:
+
+- `backend/ai_service/knowledge-base/` contains bundled markdown knowledge files.
+- `backend/ai_service/vectorstore/` contains generated FAISS, BM25, and item metadata artifacts.
+- `backend/ai_service/rag/` contains indexing, retrieval, confidence, and generation logic.
+
+## Documentation
+
+Start with these docs when changing behavior:
+
+- `docs/system-audits/00-overview.md`
+- `docs/system-audits/18-project-status.md`
+- `docs/design-review.md`
+- `docs/RAG_Architecture_v2.md`
+- `docs/chat_contract.md`
+- `docs/notification_contract.md`
+
+## Development Guidelines
+
+- Keep frontend styling in the existing CSS design system instead of adding one-off inline styles.
+- Keep role navigation centralized through shared layout/navigation components.
+- Route AI calls through the main API proxy unless a low-level AI service endpoint is being tested directly.
+- Document significant architecture, security, database, and endpoint changes in `docs/design-review.md`.
+- Preserve audit logging and RBAC checks when adding or changing backend workflows.

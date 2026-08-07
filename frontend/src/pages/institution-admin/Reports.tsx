@@ -1,7 +1,7 @@
 // Use: Generates PDF executive briefing reports using AI summaries.
 
 import { useState, useEffect, useCallback } from "react";
-import { api } from "../../lib/api";
+import { api, API_BASE_URL } from "../../lib/api";
 import { PageShell } from "../../components/shared/PageShell";
 import { useToast } from "../../components/shared/ToastContext";
 import { getApiErrorMessage } from "../../lib/errors";
@@ -140,9 +140,7 @@ export default function Reports() {
                     </td>
                     <td>
                       <a
-                        href={`${import.meta.env.VITE_API_URL ?? "http://localhost:8000"}${
-                          report.file_path
-                        }`}
+                        href={`${API_BASE_URL}/api/v1/policies/reports/${report.report_id}/download`}
                         download
                         className="btn btn-ghost"
                         style={{

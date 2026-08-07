@@ -68,6 +68,13 @@ type UserOption = {
   email: string;
 };
 
+const TRIAGE_PRIORITIES = ["critical", "high", "medium", "low"] as const;
+type TriagePriority = (typeof TRIAGE_PRIORITIES)[number];
+
+function isTriagePriority(value: string): value is TriagePriority {
+  return TRIAGE_PRIORITIES.includes(value as TriagePriority);
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [, setTriage] = useState<DashboardRow[]>([]);
@@ -207,8 +214,7 @@ export default function Dashboard() {
       if (!parsed || !parsed.priority || !Array.isArray(parsed.mapped_controls)) {
         const rawText = String(data.response || data.assessment_summary || "Triage analysis completed.");
         const priorityStr = (data.risk_level || "high").toLowerCase();
-        const validPriority: "critical" | "high" | "medium" | "low" = 
-          ["critical", "high", "medium", "low"].includes(priorityStr) ? (priorityStr as any) : "high";
+        const validPriority: TriagePriority = isTriagePriority(priorityStr) ? priorityStr : "high";
           
         parsed = {
           priority: validPriority,

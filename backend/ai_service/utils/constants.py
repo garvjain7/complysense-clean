@@ -6,9 +6,6 @@ from enum import Enum
 EMBEDDINGS_MODEL = "BAAI/bge-m3"
 EMBEDDINGS_DIMENSIONS = 1024      # bge-m3 output dimensionality
 
-# --- LLM Model (Google Gemini, free tier available) ---
-DEFAULT_LLM_MODEL = "gemini-2.5-flash-lite"
-
 # --- Retrieval Thresholds ---
 RRF_K = 60                        # RRF rank fusion constant
 FAISS_CANDIDATE_LIMIT = 20        # Max dense results before RRF
@@ -28,9 +25,6 @@ CHUNK_OVERLAP_TOKENS = 100
 HISTORY_TURNS_CONVERSATIONAL = 6
 HISTORY_TURNS_RETRIEVAL_HEAVY = 4
 HISTORY_TURNS_SINGLE_SHOT = 0
-
-# --- Model Routing ---
-GEMINI_MODEL = "gemini-2.5-flash-lite"
 
 # --- Role → Permitted Frameworks ---
 ROLE_FRAMEWORKS: dict[str, list[str]] = {

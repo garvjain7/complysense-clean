@@ -51,7 +51,7 @@ class BaseAgent:
     6.  Cross-reference injection (CrossReferenceInjector)
     7.  Context assembly (ContextBuilder)
     8.  Prompt construction (PromptBuilder)
-    9.  LLM call (Gemini 2.5 Flash via LLMService)
+    9.  LLM call (Gemini 2.5 Flash Lite via LLMService)
     10. Response validation — jailbreak + citation grounding (ResponseValidator)
     11. Return structured dict.
     """

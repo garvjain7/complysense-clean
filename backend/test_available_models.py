@@ -4,19 +4,15 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
 
 candidates = [
-    "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-2.0-flash-exp",
-    "gemini-1.5-flash-latest",
-    "gemini-flash",
-    "gemini-pro",
+    "gemini-2.5-flash",
 ]
 
 async def main():
     settings = get_ai_settings()
     key = settings.gemini_api_key
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY is required to test Gemini models.")
     print(f"Testing API key (starts with {key[:6]}...)\n")
     for m in candidates:
         try:

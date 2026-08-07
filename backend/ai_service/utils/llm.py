@@ -4,6 +4,8 @@ from typing import Any, Dict, List
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
+from ai_service.config import DEFAULT_LLM_MODEL
+
 
 class LLMService:
     """
@@ -17,8 +19,6 @@ class LLMService:
     _FALLBACK_MODELS = [
         "gemini-2.5-flash-lite",
         "gemini-2.5-flash",
-        "gemini-2.0-flash-lite",
-        "gemini-2.0-flash",
     ]
 
     def __init__(self, api_key: str | None = None):
@@ -31,7 +31,7 @@ class LLMService:
             self._clients[model] = ChatGoogleGenerativeAI(model=model, google_api_key=self.api_key)
         return self._clients[model]
 
-    async def call(self, messages: List[Dict[str, str]], model: str = "gemini-2.5-flash") -> str:
+    async def call(self, messages: List[Dict[str, str]], model: str = DEFAULT_LLM_MODEL) -> str:
         """
         Send messages to Gemini. If the chosen model fails due to availability
         (404 / model-not-found), attempt the configured fallback models in order.

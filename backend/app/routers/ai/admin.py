@@ -146,25 +146,9 @@ async def ai_risk_heatmap(
             except Exception:
                 pass
         
-        # If still failed, perform line regex matching or fallback to structural parsing
+        # If still failed, surface the model/parsing problem instead of inventing risk data.
         if not parsed_risks:
-            # Fallback mock items that match the shape so it doesn't crash the client
-            parsed_risks = [
-                {
-                    "rank": 1,
-                    "framework": "ISO 27001",
-                    "description": "Emerging IT Security risk: High number of overdue control tasks indicates process lag.",
-                    "severity": "critical",
-                    "affected_dept": "IT Department"
-                },
-                {
-                    "rank": 2,
-                    "framework": "DPDP Act 2023",
-                    "description": "Active data breach incidents highlight data processing validation vulnerability.",
-                    "severity": "high",
-                    "affected_dept": "Engineering"
-                }
-            ]
+            raise HTTPException(status_code=502, detail="AI service returned an invalid risk heatmap response.")
 
     # Enforce standard formatting of keys
     formatted = []

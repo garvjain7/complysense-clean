@@ -6,18 +6,56 @@ from pathlib import Path
 from typing import Annotated, Any
 from uuid import uuid4
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import require_permission
 from app.database import get_db_session
 from app.domain.rbac import PermissionKey, RoleName
+from app.mongodb import get_mongo_database
 from app.repositories.notification import NotificationRepository
 from app.schemas.auth import UserContext
 
 router = APIRouter(prefix="/evidence", tags=["evidence"])
+GRIDFS_EVIDENCE_PREFIX = "mongodb://gridfs/evidence/"
+
+
+async def _store_evidence_file(
+    *,
+    evidence_id: str,
+    institution_id: str,
+    file_name: str,
+    content: bytes,
+    content_type: str | None,
+    control_id: str,
+    assignment_id: str | None,
+) -> str:
+    database = get_mongo_database()
+    bucket = AsyncIOMotorGridFSBucket(database, bucket_name="evidence_files")
+    gridfs_id = await bucket.upload_from_stream(
+        file_name,
+        content,
+        metadata={
+            "evidence_id": evidence_id,
+            "institution_id": institution_id,
+            "control_id": control_id,
+            "assignment_id": assignment_id,
+            "content_type": content_type,
+        },
+    )
+    return f"{GRIDFS_EVIDENCE_PREFIX}{gridfs_id}"
+
+
+async def _read_evidence_file(file_path: str) -> bytes:
+    database = get_mongo_database()
+    bucket = AsyncIOMotorGridFSBucket(database, bucket_name="evidence_files")
+    gridfs_id = file_path.removeprefix(GRIDFS_EVIDENCE_PREFIX)
+    stream = await bucket.open_download_stream(ObjectId(gridfs_id))
+    return await stream.read()
 
 
 @router.get("", summary="List evidence documents for the current institution")
@@ -77,11 +115,16 @@ async def upload_evidence(
     safe_name = Path(file.filename or "evidence.bin").name
     safe_name = safe_name.replace(" ", "_")
     evidence_id = uuid4()
-    upload_dir = Path(__file__).resolve().parents[2] / "uploads" / "evidence"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    stored_path = upload_dir / f"{evidence_id}_{safe_name}"
     content = await file.read()
-    stored_path.write_bytes(content)
+    stored_path = await _store_evidence_file(
+        evidence_id=str(evidence_id),
+        institution_id=str(user_ctx.institution_id),
+        file_name=safe_name,
+        content=content,
+        content_type=file.content_type,
+        control_id=control_id,
+        assignment_id=assignment_id,
+    )
 
     department_id = None
     if assignment_id:
@@ -109,7 +152,7 @@ async def upload_evidence(
             "assignment_id": assignment_id,
             "department_id": department_id,
             "file_name": safe_name,
-            "file_path": str(stored_path),
+            "file_path": stored_path,
             "mime_type": file.content_type,
             "file_size_kb": max(1, len(content) // 1024),
             "description": description,
@@ -197,10 +240,10 @@ async def download_evidence(
     evidence_id: str,
     user_ctx: Annotated[UserContext, Depends(require_permission(PermissionKey.VIEW_EVIDENCE))],
     session: Annotated[AsyncSession, Depends(get_db_session)],
-) -> FileResponse:
+) -> Response:
     res = await session.execute(
         text(
-            "select file_path, file_name from evidence_documents where evidence_id = :evidence_id and institution_id = :inst_id"
+            "select file_path, file_name, mime_type from evidence_documents where evidence_id = :evidence_id and institution_id = :inst_id"
         ),
         {"evidence_id": evidence_id, "inst_id": user_ctx.institution_id},
     )
@@ -210,6 +253,14 @@ async def download_evidence(
     file_path = row["file_path"]
     if not file_path:
         raise HTTPException(status_code=404, detail="File not available")
+    if str(file_path).startswith(GRIDFS_EVIDENCE_PREFIX):
+        content = await _read_evidence_file(str(file_path))
+        return Response(
+            content=content,
+            media_type=row.get("mime_type") or "application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{row.get("file_name") or "evidence.bin"}"'},
+        )
+
     p = Path(file_path)
     if not p.exists():
         raise HTTPException(status_code=404, detail="Stored file missing on server")

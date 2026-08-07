@@ -4,10 +4,10 @@ import axios from "axios";
 import { useAuthStore } from "../store/authStore";
 import { persistSession, clearSessionStorage } from "./storage";
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+export const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 export const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: API_BASE_URL,
   withCredentials: true, // send HttpOnly cookies for refresh token
 });
 
@@ -51,7 +51,7 @@ api.interceptors.response.use(
       const { setSession, clearSession } = useAuthStore.getState();
 
       try {
-        const res = await axios.post(`${BASE_URL}/api/v1/auth/refresh`, undefined, {
+        const res = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, undefined, {
           withCredentials: true,
         });
         const { access_token, user: newUser } = res.data;

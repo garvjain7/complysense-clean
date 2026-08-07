@@ -47,6 +47,18 @@ type ObservationItem = {
   added_by_name?: string;
 };
 
+type SmartSampleItem = string | {
+  evidence_id?: string;
+  id?: string;
+};
+
+function getSmartSampleId(item: SmartSampleItem): string | null {
+  if (typeof item === "string") {
+    return item;
+  }
+  return item.evidence_id ?? item.id ?? null;
+}
+
 export default function Workspace() {
   const toast = useToast();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
@@ -133,7 +145,7 @@ export default function Workspace() {
         : Array.isArray(data.priority_evidence_ids)
         ? data.priority_evidence_ids
         : Array.isArray(data.response_json)
-        ? data.response_json.map((item: any) => typeof item === "string" ? item : item.evidence_id || item.id).filter(Boolean)
+        ? data.response_json.map((item: SmartSampleItem) => getSmartSampleId(item)).filter((id: string | null): id is string => Boolean(id))
         : [];
       setPriorityEvidenceIds(ids);
       toast.success(`Smart sample calculated — ${ids.length} items highlighted.`);

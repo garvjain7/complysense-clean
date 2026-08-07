@@ -637,27 +637,3 @@ async def toggle_user_status(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.post(
-    "/{user_id}/reset-password",
-    summary="Trigger password reset request for a user",
-)
-async def admin_reset_password(
-    user_id: str,
-    user_ctx: Annotated[UserContext, Depends(require_permission(PermissionKey.MANAGE_USERS))],
-    session: Annotated[AsyncSession, Depends(get_db_session)],
-) -> dict[str, Any]:
-    # Check if user exists in the active institution
-    res = await session.execute(
-        text("select email from users where user_id = :user_id and institution_id = :inst_id"),
-        {"user_id": user_id, "inst_id": user_ctx.institution_id},
-    )
-    row = res.mappings().first()
-    if not row:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Simulate trigger reset
-    return {
-        "success": True,
-        "email": row["email"],
-        "message": f"Password reset email sent to {row['email']}",
-    }
