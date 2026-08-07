@@ -246,6 +246,16 @@ async def update_department(
                 },
             )
 
+        from app.repositories.audit import AuditLogRepository
+        await AuditLogRepository(session).write(
+            institution_id=user_ctx.institution_id,
+            user_id=user_ctx.user_id,
+            active_role_id=user_ctx.active_role_id,
+            action_type="department_updated",
+            entity_type="department",
+            entity_id=dept_id,
+            action_details={"fields": [f for f in payload.model_dump(exclude_unset=True).keys()]},
+        )
         await session.commit()
         return {"department_id": str(row["department_id"]), "message": "Updated successfully"}
     except HTTPException:
@@ -287,6 +297,16 @@ async def toggle_department_status(
         if not row:
             await session.rollback()
             raise HTTPException(status_code=404, detail="Department not found")
+        from app.repositories.audit import AuditLogRepository
+        await AuditLogRepository(session).write(
+            institution_id=user_ctx.institution_id,
+            user_id=user_ctx.user_id,
+            active_role_id=user_ctx.active_role_id,
+            action_type="department_status_toggled",
+            entity_type="department",
+            entity_id=dept_id,
+            action_details={"is_active": payload.is_active},
+        )
         await session.commit()
         return {"department_id": str(row["department_id"]), "is_active": row["is_active"]}
     except Exception as exc:

@@ -134,7 +134,6 @@ class AuthService:
 
     async def login(self, payload: LoginRequest, request: Request) -> AuthTokenResult:
         ip = _get_ip(request)
-        mac = _get_mac(request, payload)
         user = await self.users.find_active_by_email(payload.email)
 
         # ---- account not found — generic error to prevent user enumeration ----
@@ -158,9 +157,8 @@ class AuthService:
                     user_id=user_id,
                     active_role_id=role_id,
                     action_type="failed_login",
-                    action_details={"reason": "account_blocked", "ip": ip, "mac_address": mac},
+                    action_details={"reason": "account_blocked", "ip": ip},
                     ip_address=ip,
-                    mac_address=mac,
                 )
                 await self.session.commit()
                 raise LockedError(
@@ -185,10 +183,8 @@ class AuthService:
                         "attempts": new_count,
                         "blocked_until": blocked_until_dt.isoformat(),
                         "ip": ip,
-                        "mac_address": mac,
                     },
                     ip_address=ip,
-                    mac_address=mac,
                 )
             else:
                 await self.audit.write(
@@ -196,9 +192,8 @@ class AuthService:
                     user_id=user_id,
                     active_role_id=role_id,
                     action_type="failed_login",
-                    action_details={"attempts": new_count, "max": _MAX_ATTEMPTS, "ip": ip, "mac_address": mac},
+                    action_details={"attempts": new_count, "max": _MAX_ATTEMPTS, "ip": ip},
                     ip_address=ip,
-                    mac_address=mac,
                 )
             await self.session.commit()
             raise UnauthorizedError("Invalid email or password")
@@ -220,7 +215,6 @@ class AuthService:
             entity_type="user_sessions",
             entity_id=session_id,
             ip_address=ip,
-            mac_address=mac,
         )
         await self.session.commit()
 
@@ -514,6 +508,10 @@ class AuthService:
         if not target_role:
             raise UnauthorizedError("Target role does not exist")
 
+        target_role_name = str(target_role["role_name"])
+        if user.role_name != "Super Admin" and target_role_name == "Super Admin":
+            raise UnauthorizedError("Only Super Admins can assume the Super Admin role")
+
         await self.sessions.update_role(
             session_id=user.session_id, active_role_id=payload.target_role_id
         )
@@ -662,78 +660,6 @@ class AuthService:
 def _get_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
-
-_CACHED_HOST_MAC: str | None = None
-
-
-def _get_host_mac() -> str:
-    global _CACHED_HOST_MAC
-    if _CACHED_HOST_MAC:
-        return _CACHED_HOST_MAC
-
-    try:
-        import subprocess
-
-        cmd = subprocess.run(["getmac", "/fo", "csv", "/v"], capture_output=True, text=True, timeout=2)
-        for line in cmd.stdout.splitlines():
-            parts = [p.strip('"') for p in line.split(",")]
-            if len(parts) >= 3:
-                conn_name = parts[0].lower()
-                adapter_name = parts[1].lower()
-                mac = parts[2].replace("-", ":").upper()
-                if mac and mac != "N/A" and len(mac) == 17 and (
-                    "wi-fi" in conn_name
-                    or "ethernet" in conn_name
-                    or "intel" in adapter_name
-                    or "realtek" in adapter_name
-                ):
-                    _CACHED_HOST_MAC = mac
-                    return mac
-    except Exception:
-        pass
-
-    try:
-        import uuid
-
-        node = uuid.getnode()
-        mac = ":".join(f"{(node >> i) & 0xff:02x}" for i in range(0, 48, 8)[::-1]).upper()
-        if mac and mac != "00:00:00:00:00:00":
-            _CACHED_HOST_MAC = mac
-            return mac
-    except Exception:
-        pass
-
-    _CACHED_HOST_MAC = "DC:97:BA:5E:CA:EA"
-    return _CACHED_HOST_MAC
-
-
-def _get_mac(request: Request | None = None, payload: Any = None) -> str:
-    # 1. Check payload passed from client web application
-    if payload and getattr(payload, "mac_address", None):
-        return str(payload.mac_address)
-
-    # 2. Check HTTP headers injected by client / proxy / gateway / VPN
-    if request:
-        for header_name in ("X-Client-MAC", "X-Forwarded-MAC", "X-MAC-Address", "X-Device-MAC", "x-mac-address"):
-            val = request.headers.get(header_name)
-            if val:
-                return val
-
-        # 3. Check ARP table for remote client IP if on local network
-        client_ip = request.client.host if request.client else None
-        if client_ip and client_ip not in ("127.0.0.1", "::1", "localhost"):
-            try:
-                import re
-                import subprocess
-
-                cmd = subprocess.run(["arp", "-a", client_ip], capture_output=True, text=True, timeout=1)
-                match = re.search(r"([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})", cmd.stdout)
-                if match:
-                    return match.group(0).replace("-", ":").upper()
-            except Exception:
-                pass
-
-    return _get_host_mac()
 
 
 def _decode_verified(token: str, expected_type: str) -> dict:

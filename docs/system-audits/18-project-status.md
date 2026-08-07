@@ -4,13 +4,13 @@ These percentages are engineering estimates from inspected implementation depth,
 
 | Area | Estimated status |
 |---|---:|
-| Overall | 95% |
-| Frontend | 96% |
-| Backend API | 96% |
+| Overall | 98% |
+| Frontend | 98% |
+| Backend API | 98% |
 | Authentication | 98% |
-| RBAC | 96% |
-| MAC Address Audit Tracking | 100% |
-| Post-Login CRUD Audit Logging | 98% |
+| RBAC | 98% |
+| Operational Audit Trail Logging | 100% |
+| Single-Query Audit Pagination | 100% |
 | Tenant & User Management | 98% |
 | Notifications System | 95% |
 | AI service | 85% |
@@ -27,12 +27,11 @@ These percentages are engineering estimates from inspected implementation depth,
   - User self password change in `/profile` across all 9 RBAC roles.
   - Admin & Institution Admin password reset with account unlock & login counter reset.
 
-- **MAC Address Audit Trail & Post-Login Logging**:
-  - `mac_address` column added to `audit_logs` table schema.
-  - Client-side browser hardware device fingerprinting (`getClientMacAddress()`).
-  - 5-tier backend MAC resolution pipeline (`_get_mac()` with fast host adapter caching, payload MAC, proxy/VPN headers, and ARP table lookup).
-  - MAC Address column displayed in Super Admin Audit Trail (`/super-admin/audit-trail`) and Tenant Detail Audit Logs.
-  - Comprehensive post-login user activity logging across all CRUD operations (`institution_created`, `institution_updated`, `institution_status_toggled`, `institution_deleted`, `user_invited`, `user_role_updated`, `user_unlocked`, `admin_password_reset`, `change_password`, `department_created`, `department_updated`, `department_deleted`, `reviewer_assigned`, `event_created`, `event_updated`, `event_deleted`).
+- **Comprehensive Audit Trail & Single-Query Pagination**:
+  - 100% action logging across all user, department, policy, evidence, control, assessment, incident, vendor, and calendar operations.
+  - Optimized backend `GET /api/v1/audit/logs` query using PostgreSQL `COUNT(*) OVER() AS full_count` to execute **exactly 1 DB query** per request instead of batching or double-querying.
+  - Interactive 50-item page pagination with direct numeric page jump (`Page [ X ] of Y`) allowing instant jumps (e.g. typing `4` loads logs 151 to 200).
+  - Dedicated Audit Trail page for Institution Admin (`/admin/audit-trail`) and Super Admin (`/super-admin/audit-trail`).
 
 - **Tenant & User Management**:
   - Permanent tenant cascade deletion API (`DELETE /api/v1/institutions/{id}`) and frontend modal.

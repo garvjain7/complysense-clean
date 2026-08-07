@@ -96,9 +96,9 @@ async def build_institution_operational_context(session: AsyncSession, instituti
         tasks_res = await session.execute(
             text(
                 """
-                select title, priority, status, due_date
-                from remediation_tasks
-                where institution_id = :inst_id and status != 'completed'
+                select task_title as title, priority, task_status as status, due_date
+                from mitigation_tasks
+                where institution_id = :inst_id and task_status != 'completed'
                 order by created_at desc
                 limit 10
                 """

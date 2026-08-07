@@ -572,6 +572,16 @@ async def update_user(
                     },
                 )
 
+        from app.repositories.audit import AuditLogRepository
+        await AuditLogRepository(session).write(
+            institution_id=user_ctx.institution_id,
+            user_id=user_ctx.user_id,
+            active_role_id=user_ctx.active_role_id,
+            action_type="user_updated",
+            entity_type="user",
+            entity_id=user_id,
+            action_details={"fields": [f for f in payload.model_dump(exclude_unset=True).keys()]},
+        )
         await session.commit()
         return {"user_id": user_id, "message": "User updated successfully"}
     except Exception as exc:
@@ -610,6 +620,16 @@ async def toggle_user_status(
         if not row:
             await session.rollback()
             raise HTTPException(status_code=404, detail="User not found")
+        from app.repositories.audit import AuditLogRepository
+        await AuditLogRepository(session).write(
+            institution_id=user_ctx.institution_id,
+            user_id=user_ctx.user_id,
+            active_role_id=user_ctx.active_role_id,
+            action_type="user_status_toggled",
+            entity_type="user",
+            entity_id=user_id,
+            action_details={"is_active": payload.is_active},
+        )
         await session.commit()
         return {"user_id": str(row["user_id"]), "is_active": row["is_active"]}
     except Exception as exc:

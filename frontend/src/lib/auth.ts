@@ -21,28 +21,11 @@ export interface ExitRoleResponse {
   user: AuthUser;
 }
 
-export function getClientMacAddress(): string {
-  try {
-    const raw = `${navigator.userAgent}-${navigator.language}-${screen.width}x${screen.height}-${navigator.hardwareConcurrency || 4}-${screen.colorDepth}`;
-    let hash = 0;
-    for (let i = 0; i < raw.length; i++) {
-      hash = (hash << 5) - hash + raw.charCodeAt(i);
-      hash |= 0;
-    }
-    const hex = Math.abs(hash).toString(16).padStart(12, "0").toUpperCase();
-    const formatted = hex.match(/.{1,2}/g)?.join(":") ?? "4A:8B:9C:2D:1E:0F";
-    return formatted;
-  } catch {
-    return "4A:8B:9C:2D:1E:0F";
-  }
-}
 
-export async function login(email: string, password: string, customMac?: string): Promise<LoginResponse> {
-  const mac = customMac || getClientMacAddress();
+export async function login(email: string, password: string): Promise<LoginResponse> {
   const res = await api.post<LoginResponse>(
     "/api/v1/auth/login",
-    { email, password, mac_address: mac },
-    { headers: { "X-Client-MAC": mac } }
+    { email, password },
   );
   return res.data;
 }

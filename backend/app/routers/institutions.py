@@ -221,7 +221,7 @@ async def get_institution_dashboard(
                        end), 0.0)::numeric, 1) as score
                 from departments d
                 left join users u on u.user_id = d.reviewer_user_id
-                left join control_assignments ca on ca.institution_id = d.institution_id
+                left join control_assignments ca on ca.institution_id = d.institution_id and ca.department_id = d.department_id
                 where d.institution_id = :inst_id
                 group by d.department_id, d.department_name
                 order by d.department_name asc

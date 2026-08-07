@@ -13,7 +13,6 @@ from pydantic import BaseModel, EmailStr, Field
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
-    mac_address: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):

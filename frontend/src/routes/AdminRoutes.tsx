@@ -10,6 +10,8 @@ import Reports from "../pages/institution-admin/Reports";
 import Users from "../pages/institution-admin/Users";
 import Notifications from "../pages/compliance/Notifications";
 
+import AuditTrail from "../pages/institution-admin/AuditTrail";
+
 export const adminRoutes: RouteObject = {
   path: "/admin",
   element: (
@@ -23,6 +25,7 @@ export const adminRoutes: RouteObject = {
     { path: "users", element: <Users /> },
     { path: "calendar", element: <Calendar /> },
     { path: "reports", element: <Reports /> },
+    { path: "audit-trail", element: <AuditTrail /> },
     { path: "notifications", element: <Notifications /> }
   ]
 };

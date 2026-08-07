@@ -17,7 +17,6 @@ from app.core.permissions import require_permission
 from app.database import get_db_session
 from app.domain.rbac import PermissionKey, RoleName
 from app.schemas.auth import UserContext
-from app.services.auth_service import _get_mac
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 
@@ -129,7 +128,7 @@ async def get_recent_audit(
         select al.audit_log_id, al.institution_id, i.institution_name,
                al.user_id, u.full_name as user_name,
                al.action_type, al.entity_type, al.entity_id,
-               al.action_details, al.ip_address, al.mac_address, al.created_at
+               al.action_details, al.ip_address, al.created_at
           from audit_logs al
           left join institutions i on i.institution_id = al.institution_id
           left join users u on u.user_id = al.user_id
@@ -152,7 +151,6 @@ async def get_recent_audit(
             d["institution_id"] = str(d.get("institution_id")) if d.get("institution_id") else None
             d["user_id"] = str(d.get("user_id")) if d.get("user_id") else None
             d["entity_id"] = str(d.get("entity_id")) if d.get("entity_id") else None
-            d["mac_address"] = d.get("mac_address") or (d.get("action_details") or {}).get("mac_address") or _get_mac()
             d["created_at"] = _format_utc_iso(d.get("created_at"))
             out.append(d)
         return out
@@ -188,18 +186,12 @@ async def get_audit_logs(
                al.user_id, u.full_name as user_name, u.email as user_email,
                al.active_role_id, r.role_name as role_at_time,
                al.action_type, al.entity_type, al.entity_id,
-               al.action_details, al.ip_address, al.mac_address, al.created_at
+               al.action_details, al.ip_address, al.created_at,
+               count(*) over() as full_count
           from audit_logs al
           left join institutions i on i.institution_id = al.institution_id
           left join users u on u.user_id = al.user_id
           left join roles r on r.role_id = al.active_role_id
-         where 1=1
-    """
-
-    query_count = """
-        select count(*)
-          from audit_logs al
-          left join users u on u.user_id = al.user_id
          where 1=1
     """
 
@@ -227,13 +219,24 @@ async def get_audit_logs(
         params["to_date"] = f"{to_date} 23:59:59"
 
     if format == "csv":
-        query_csv = f"{query_select} {where_clause} order by al.created_at desc"
+        query_csv = f"""
+            select al.audit_log_id, al.institution_id, i.institution_name,
+                   al.user_id, u.full_name as user_name, u.email as user_email,
+                   al.active_role_id, r.role_name as role_at_time,
+                   al.action_type, al.entity_type, al.entity_id,
+                   al.action_details, al.ip_address, al.created_at
+              from audit_logs al
+              left join institutions i on i.institution_id = al.institution_id
+              left join users u on u.user_id = al.user_id
+              left join roles r on r.role_id = al.active_role_id
+             where 1=1 {where_clause} order by al.created_at desc
+        """
         res = await session.execute(text(query_csv), params)
         rows = res.mappings().all()
 
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["Timestamp", "Institution", "User Name", "User Email", "Role", "Action", "Entity Type", "Entity ID", "IP Address", "MAC Address"])
+        writer.writerow(["Timestamp", "Institution", "User Name", "User Email", "Role", "Action", "Entity Type", "Entity ID", "IP Address"])
 
         for r in rows:
             d = dict(r)
@@ -247,7 +250,6 @@ async def get_audit_logs(
                 d.get("entity_type") or "",
                 d.get("entity_id") or "",
                 d.get("ip_address") or "",
-                d.get("mac_address") or (d.get("action_details") or {}).get("mac_address") or _get_mac(),
             ])
 
         csv_data = output.getvalue()
@@ -259,9 +261,6 @@ async def get_audit_logs(
             headers={"Content-Disposition": "attachment; filename=audit_trail_export.csv"},
         )
 
-    res_count = await session.execute(text(f"{query_count} {where_clause}"), params)
-    total_count = res_count.scalar() or 0
-
     offset = (page - 1) * limit
     params["limit"] = limit
     params["offset"] = offset
@@ -270,17 +269,27 @@ async def get_audit_logs(
     res_logs = await session.execute(text(query_paginated), params)
     rows = res_logs.mappings().all()
 
+    total_count = 0
     logs = []
-    for r in rows:
-        d = dict(r)
-        d["audit_log_id"] = str(d["audit_log_id"])
-        d["institution_id"] = str(d["institution_id"]) if d["institution_id"] else None
-        d["user_id"] = str(d["user_id"]) if d["user_id"] else None
-        d["active_role_id"] = str(d["active_role_id"]) if d["active_role_id"] else None
-        d["entity_id"] = str(d["entity_id"]) if d["entity_id"] else None
-        d["mac_address"] = d.get("mac_address") or (d.get("action_details") or {}).get("mac_address") or _get_mac()
-        d["created_at"] = _format_utc_iso(d.get("created_at"))
-        logs.append(d)
+    if rows:
+        total_count = int(rows[0]["full_count"])
+        for r in rows:
+            d = dict(r)
+            d.pop("full_count", None)
+            d["audit_log_id"] = str(d["audit_log_id"])
+            d["institution_id"] = str(d["institution_id"]) if d["institution_id"] else None
+            d["user_id"] = str(d["user_id"]) if d["user_id"] else None
+            d["active_role_id"] = str(d["active_role_id"]) if d["active_role_id"] else None
+            d["entity_id"] = str(d["entity_id"]) if d["entity_id"] else None
+            d["created_at"] = _format_utc_iso(d.get("created_at"))
+            logs.append(d)
+    elif page > 1:
+        # Fallback if page is out of bounds (offset returns 0 rows)
+        count_res = await session.execute(
+            text(f"select count(*) from audit_logs al left join users u on u.user_id = al.user_id where 1=1 {where_clause}"),
+            params,
+        )
+        total_count = count_res.scalar() or 0
 
     return {"logs": logs, "total": total_count, "page": page, "limit": limit}
 

@@ -66,9 +66,6 @@ class AISettings(BaseSettings):
     # Embeddings model (local, free via sentence-transformers)
     embeddings_model: str = "BAAI/bge-m3"
 
-    # LLM model
-    # Use a models/* name compatible with Google's Generative Language API. Default to a modern Gemini flash model.
-    llm_model: str = "gemini-1.5-flash"
 
     @field_validator("vectorstore_path", mode="before")
     @classmethod

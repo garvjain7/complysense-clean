@@ -1,4 +1,4 @@
-// Use: Super Admin — Audit Trail Explorer. Filterable, paginated, and CSV-downloadable log of all platform actions.
+// Use: Institution Admin — Audit Trail Explorer. Filterable, paginated (50/page with direct page jump), and CSV-downloadable log of all institutional actions.
 
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -19,11 +19,6 @@ interface AuditLog {
   created_at: string;
 }
 
-interface Institution {
-  institution_id: string;
-  institution_name: string;
-}
-
 const ACTION_TYPES = [
   "login", "logout", "failed_login", "user_blocked", "register",
   "user_created", "user_invited", "user_updated", "user_role_changed", "user_status_toggled",
@@ -36,7 +31,6 @@ const ACTION_TYPES = [
   "incident_created", "incident_updated", "incident_checklist_updated",
   "vendor_created", "vendor_updated", "vendor_risk_assessment_created", "vendor_risk_assessment_updated",
   "event_created", "event_updated", "event_deleted",
-  "institution_created", "institution_updated", "institution_status_toggled",
 ];
 
 const ACTION_LABELS: Record<string, string> = {
@@ -54,14 +48,9 @@ const ACTION_LABELS: Record<string, string> = {
   user_unlocked: "Unlocked User Account",
   admin_password_reset: "Reset User Password",
   change_password: "Changed Password",
-  institution_created: "Created Institution",
-  institution_updated: "Updated Institution",
-  institution_deleted: "Deleted Institution",
-  institution_status_toggled: "Toggled Institution Status",
   department_created: "Created Department",
   department_updated: "Updated Department",
   department_status_toggled: "Toggled Department Status",
-  department_deleted: "Deleted Department",
   reviewer_assigned: "Assigned Reviewer",
   event_created: "Created Calendar Event",
   event_updated: "Updated Calendar Event",
@@ -92,10 +81,9 @@ const ACTION_LABELS: Record<string, string> = {
   observation_added: "Added Audit Observation",
 };
 
-export default function AuditTrail() {
+export default function AdminAuditTrail() {
   const [searchParams] = useSearchParams();
   const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -103,7 +91,6 @@ export default function AuditTrail() {
   const LIMIT = 50;
 
   // Filters
-  const [institutionId, setInstitutionId] = useState(searchParams.get("institution_id") ?? "");
   const [actionType, setActionType] = useState(searchParams.get("action_type") ?? "");
   const [userSearch, setUserSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -112,7 +99,6 @@ export default function AuditTrail() {
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     const params: Record<string, string | number> = { page, limit: LIMIT };
-    if (institutionId) params.institution_id = institutionId;
     if (actionType) params.action_type = actionType;
     if (userSearch) params.user_search = userSearch;
     if (fromDate) params.from_date = fromDate;
@@ -122,13 +108,11 @@ export default function AuditTrail() {
       const res = await api.get("/api/v1/audit/logs", { params });
       setLogs(res.data.logs ?? []);
       setTotal(res.data.total ?? 0);
-    } catch { setLogs([]); }
+    } catch {
+      setLogs([]);
+    }
     setLoading(false);
-  }, [page, institutionId, actionType, userSearch, fromDate, toDate]);
-
-  useEffect(() => {
-    api.get("/api/v1/institutions").then((r) => setInstitutions(r.data)).catch(() => {});
-  }, []);
+  }, [page, actionType, userSearch, fromDate, toDate]);
 
   useEffect(() => {
     fetchLogs();
@@ -137,7 +121,6 @@ export default function AuditTrail() {
 
   async function handleCSVExport() {
     const params: Record<string, string> = { format: "csv" };
-    if (institutionId) params.institution_id = institutionId;
     if (actionType) params.action_type = actionType;
     if (userSearch) params.user_search = userSearch;
     if (fromDate) params.from_date = fromDate;
@@ -148,10 +131,12 @@ export default function AuditTrail() {
       const url = window.URL.createObjectURL(res.data);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "audit_trail_export.csv";
+      a.download = "institution_audit_trail.csv";
       a.click();
       window.URL.revokeObjectURL(url);
-    } catch { alert("CSV export failed."); }
+    } catch {
+      alert("CSV export failed.");
+    }
   }
 
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
@@ -168,7 +153,7 @@ export default function AuditTrail() {
   return (
     <PageShell
       title="Audit Trail"
-      subtitle="Immutable, searchable log of every action across the platform"
+      subtitle="Complete, searchable log of every action performed in your institution"
       actions={
         <button className="btn btn-ghost" onClick={handleCSVExport} style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <Download size={14} /> Export CSV
@@ -186,21 +171,14 @@ export default function AuditTrail() {
             <label className="form-label" style={{ fontSize: 11 }}>To Date</label>
             <input type="date" className="form-input" value={toDate} onChange={(e) => setToDate(e.target.value)} style={{ fontSize: 13 }} />
           </div>
-          <div style={{ flex: "1 1 180px" }}>
-            <label className="form-label" style={{ fontSize: 11 }}>Institution</label>
-            <select className="form-input" value={institutionId} onChange={(e) => setInstitutionId(e.target.value)} style={{ fontSize: 13 }}>
-              <option value="">All Institutions</option>
-              {institutions.map((i) => <option key={i.institution_id} value={i.institution_id}>{i.institution_name}</option>)}
-            </select>
-          </div>
-          <div style={{ flex: "1 1 180px" }}>
+          <div style={{ flex: "1 1 200px" }}>
             <label className="form-label" style={{ fontSize: 11 }}>Action Type</label>
             <select className="form-input" value={actionType} onChange={(e) => setActionType(e.target.value)} style={{ fontSize: 13 }}>
               <option value="">All Actions</option>
               {ACTION_TYPES.map((a) => <option key={a} value={a}>{ACTION_LABELS[a] ?? a}</option>)}
             </select>
           </div>
-          <div style={{ flex: "1 1 200px" }}>
+          <div style={{ flex: "1 1 220px" }}>
             <label className="form-label" style={{ fontSize: 11 }}>Search User</label>
             <div style={{ position: "relative" }}>
               <Search size={13} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
@@ -213,9 +191,12 @@ export default function AuditTrail() {
               />
             </div>
           </div>
-          {(institutionId || actionType || userSearch || fromDate || toDate) && (
-            <button className="btn btn-ghost" style={{ fontSize: 12, alignSelf: "flex-end" }}
-              onClick={() => { setInstitutionId(""); setActionType(""); setUserSearch(""); setFromDate(""); setToDate(""); setPage(1); }}>
+          {(actionType || userSearch || fromDate || toDate) && (
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: 12, alignSelf: "flex-end" }}
+              onClick={() => { setActionType(""); setUserSearch(""); setFromDate(""); setToDate(""); setPage(1); }}
+            >
               Clear Filters
             </button>
           )}
@@ -232,7 +213,6 @@ export default function AuditTrail() {
             <thead>
               <tr>
                 <th>Timestamp</th>
-                <th>Institution</th>
                 <th>User</th>
                 <th>Role</th>
                 <th>Action</th>
@@ -243,16 +223,15 @@ export default function AuditTrail() {
             <tbody>
               {loading ? (
                 Array.from({ length: 10 }).map((_, i) => (
-                  <tr key={i}>{Array.from({ length: 7 }).map((_, j) => <td key={j}><div className="skeleton" style={{ height: 16, borderRadius: 4 }} /></td>)}</tr>
+                  <tr key={i}>{Array.from({ length: 6 }).map((_, j) => <td key={j}><div className="skeleton" style={{ height: 16, borderRadius: 4 }} /></td>)}</tr>
                 ))
               ) : logs.length === 0 ? (
-                <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>No audit logs match your filters.</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>No audit logs match your filters.</td></tr>
               ) : logs.map((log) => (
                 <tr key={log.audit_log_id}>
                   <td style={{ fontFamily: "var(--font-mono)", fontSize: 11, whiteSpace: "nowrap", color: "var(--text-muted)" }}>
                     {new Date(log.created_at).toLocaleString("en-IN")}
                   </td>
-                  <td style={{ fontSize: 13 }}>{log.institution_name ?? "System"}</td>
                   <td>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{log.user_name ?? "System"}</div>
                     {log.user_email && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{log.user_email}</div>}

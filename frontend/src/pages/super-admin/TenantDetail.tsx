@@ -48,7 +48,6 @@ interface AuditLog {
   entity_type: string | null;
   entity_id: string | null;
   ip_address: string | null;
-  mac_address?: string | null;
   created_at: string;
 }
 
@@ -346,11 +345,11 @@ export default function TenantDetail() {
             <div className="table-wrapper">
               <table className="data-table">
                 <thead>
-                  <tr><th>Timestamp</th><th>User</th><th>Action</th><th>Entity</th><th>IP</th><th>MAC</th></tr>
+                  <tr><th>Timestamp</th><th>User</th><th>Action</th><th>Entity</th><th>IP</th></tr>
                 </thead>
                 <tbody>
                   {auditLogs.length === 0 ? (
-                    <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>No logs for this institution.</td></tr>
+                    <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>No logs for this institution.</td></tr>
                   ) : auditLogs.slice(0, 50).map((log) => (
                     <tr key={log.audit_log_id}>
                       <td style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{new Date(log.created_at).toLocaleString("en-IN")}</td>
@@ -358,7 +357,6 @@ export default function TenantDetail() {
                       <td><span className="badge badge-draft">{ACTION_LABELS[log.action_type] ?? log.action_type}</span></td>
                       <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{log.entity_type ?? "—"}</td>
                       <td style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{log.ip_address ?? "—"}</td>
-                      <td style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{log.mac_address ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>

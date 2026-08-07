@@ -38,7 +38,7 @@ PostgreSQL:
 - `users`
 - `departments`
 - `roles`
-- `audit_logs` (with `mac_address` tracking and post-login CRUD logging)
+- `audit_logs`
 - `compliance_calendar`
 - `audit_reports`
 - Institution-scoped operational tables for dashboard/report summaries.
@@ -52,5 +52,4 @@ MongoDB:
 - **User Password Reset**: Institution Admin can reset user passwords via `POST /api/v1/users/{user_id}/reset-password`, resetting password hash, clearing failed login counters, unlocking accounts, and writing audit logs.
 - **User Invite & Creation**: Modal UI in `/admin/users` allows direct invitation/creation of users with specific roles.
 - **Department Reviewer Assignment**: Department reviewer linking updates `departments.reviewer_user_id` and logs audit events (`reviewer_assigned`).
-- **Live Device MAC & Activity Audit Logging**: Institution Admin audit trail tracks client device MAC address and all post-login user CRUD operations.
 

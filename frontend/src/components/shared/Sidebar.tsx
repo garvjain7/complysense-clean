@@ -40,6 +40,7 @@ const NAV_MAP: Record<RoleName, NavItemDef[]> = {
     { to: "/admin/users",        label: "Users",       icon: Users },
     { to: "/admin/calendar",     label: "Calendar",    icon: CalendarDays },
     { to: "/admin/reports",      label: "Reports",     icon: FileBarChart },
+    { to: "/admin/audit-trail",  label: "Audit Trail", icon: ScrollText },
   ],
   "Compliance Officer": [
     { to: "/compliance/dashboard",      label: "Dashboard",     icon: LayoutDashboard },
@@ -127,9 +128,9 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
           </div>
           <span className="sidebar-brand-name">ComplySense</span>
         </div>
-        {user.role_name !== "Super Admin" && (
+        {user.role_name !== "Super Admin" && user.institution_name && (
           <div className="sidebar-institution-name">
-            {user.institution_name ?? user.institution_id}
+            {user.institution_name}
           </div>
         )}
       </div>

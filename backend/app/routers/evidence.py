@@ -138,8 +138,17 @@ async def upload_evidence(
                     message=f"Evidence '{safe_name}' was uploaded for review.",
                     notification_type="evidence_approved",
                     related_entity_type="evidence",
-                    related_entity_id=str(row["evidence_id"]),
                 )
+        from app.repositories.audit import AuditLogRepository
+        await AuditLogRepository(session).write(
+            institution_id=user_ctx.institution_id,
+            user_id=user_ctx.user_id,
+            active_role_id=user_ctx.active_role_id,
+            action_type="evidence_uploaded",
+            entity_type="evidence",
+            entity_id=str(row["evidence_id"]),
+            action_details={"file_name": safe_name, "control_id": control_id},
+        )
         await session.commit()
     except Exception:
         await session.rollback()

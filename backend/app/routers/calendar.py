@@ -291,6 +291,16 @@ async def update_calendar_event(
         if not row:
             await session.rollback()
             raise HTTPException(status_code=404, detail="Event not found")
+        from app.repositories.audit import AuditLogRepository
+        await AuditLogRepository(session).write(
+            institution_id=user_ctx.institution_id,
+            user_id=user_ctx.user_id,
+            active_role_id=user_ctx.active_role_id,
+            action_type="event_updated",
+            entity_type="calendar_event",
+            entity_id=event_id,
+            action_details={"fields": list(updates.keys())},
+        )
         await session.commit()
         return {
             "calendar_id": str(row["calendar_id"]),
@@ -332,6 +342,15 @@ async def delete_calendar_event(
         if not row:
             await session.rollback()
             raise HTTPException(status_code=404, detail="Event not found")
+        from app.repositories.audit import AuditLogRepository
+        await AuditLogRepository(session).write(
+            institution_id=user_ctx.institution_id,
+            user_id=user_ctx.user_id,
+            active_role_id=user_ctx.active_role_id,
+            action_type="event_deleted",
+            entity_type="calendar_event",
+            entity_id=event_id,
+        )
         await session.commit()
         return {"calendar_id": str(row["calendar_id"]), "deleted": True}
     except Exception as exc:

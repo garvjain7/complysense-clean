@@ -97,8 +97,8 @@ export default function Profile() {
               <div style={{ fontWeight: 600 }}>{user?.active_role_name}</div>
             </div>
             <div>
-              <div className="form-label">User ID</div>
-              <code style={{ fontSize: 12, color: "var(--text-muted)" }}>{user?.user_id}</code>
+              <div className="form-label">Account Status</div>
+              <div style={{ fontWeight: 600, color: "var(--success)" }}>Active</div>
             </div>
           </div>
 

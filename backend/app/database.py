@@ -39,9 +39,6 @@ async def initialize_database_schema() -> None:
                 """
             )
         )
-        await connection.execute(
-            text("alter table audit_logs add column if not exists mac_address text")
-        )
 
 
 async def get_db_session() -> AsyncIterator[AsyncSession]:

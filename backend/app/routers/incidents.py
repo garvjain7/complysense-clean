@@ -217,6 +217,16 @@ async def create_incident(
         related_entity_id=str(row["incident_id"]),
     )
 
+    from app.repositories.audit import AuditLogRepository
+    await AuditLogRepository(session).write(
+        institution_id=user_ctx.institution_id,
+        user_id=user_ctx.user_id,
+        active_role_id=user_ctx.active_role_id,
+        action_type="incident_created",
+        entity_type="incident",
+        entity_id=str(row["incident_id"]),
+        action_details={"title": payload.title, "severity": payload.severity},
+    )
     await session.commit()
 
     return {
@@ -390,10 +400,22 @@ async def update_incident(
         returning incident_id, status, cert_in_reported, resolution_notes
     """
     res = await session.execute(text(query), params)
-    await session.commit()
     row = res.mappings().first()
     if not row:
+        await session.rollback()
         raise HTTPException(status_code=404, detail="Incident not found")
+
+    from app.repositories.audit import AuditLogRepository
+    await AuditLogRepository(session).write(
+        institution_id=user_ctx.institution_id,
+        user_id=user_ctx.user_id,
+        active_role_id=user_ctx.active_role_id,
+        action_type="incident_updated",
+        entity_type="incident",
+        entity_id=incident_id,
+        action_details={"status": row["status"], "cert_in_reported": bool(row["cert_in_reported"])},
+    )
+    await session.commit()
     return {
         "incident_id": str(row["incident_id"]),
         "status": row["status"],

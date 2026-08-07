@@ -140,7 +140,7 @@ export default function Workspace() {
 
       // Auto-select the first control containing a priority evidence file
       const firstPriorityEvidence = evidenceItems.find((ev) => ids.includes(ev.evidence_id));
-      if (firstPriorityEvidence) {
+      if (firstPriorityEvidence && firstPriorityEvidence.control_id) {
         setSelectedControlId(firstPriorityEvidence.control_id);
       }
     } catch (err: unknown) {
