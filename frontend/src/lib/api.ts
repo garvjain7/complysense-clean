@@ -2,6 +2,7 @@
 
 import axios from "axios";
 import { useAuthStore } from "../store/authStore";
+import { persistSession, clearSessionStorage } from "./storage";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -21,48 +22,57 @@ api.interceptors.request.use((config) => {
 
 // ─── Response interceptor — silent token refresh on 401 ────────────────────
 let isRefreshing = false;
-let refreshQueue: Array<(token: string) => void> = [];
+let refreshQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (err: any) => void;
+}> = [];
 
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config;
 
-    if (error.response?.status === 401 && !original._retry) {
+    // Do NOT trigger silent refresh for login, register, or refresh endpoint errors
+    const isAuthEndpoint =
+      original?.url?.includes("/api/v1/auth/login") ||
+      original?.url?.includes("/api/v1/auth/register") ||
+      original?.url?.includes("/api/v1/auth/refresh");
+
+    if (error.response?.status === 401 && !original._retry && !isAuthEndpoint) {
       original._retry = true;
 
       if (isRefreshing) {
-        return new Promise((resolve) => {
-          refreshQueue.push((token) => {
-            original.headers.Authorization = `Bearer ${token}`;
-            resolve(api(original));
+        return new Promise((resolve, reject) => {
+          refreshQueue.push({
+            resolve: (token) => {
+              original.headers.Authorization = `Bearer ${token}`;
+              resolve(api(original));
+            },
+            reject: (err) => {
+              reject(err);
+            },
           });
         });
       }
 
       isRefreshing = true;
-      const { refreshToken, setSession, clearSession, user } =
-        useAuthStore.getState();
-
-      if (!refreshToken) {
-        clearSession();
-        window.location.href = "/login";
-        return Promise.reject(error);
-      }
+      const { setSession, clearSession } = useAuthStore.getState();
 
       try {
-        const res = await axios.post(`${BASE_URL}/api/v1/auth/refresh`, {
-          refresh_token: refreshToken,
+        const res = await axios.post(`${BASE_URL}/api/v1/auth/refresh`, undefined, {
+          withCredentials: true,
         });
-        const { access_token, refresh_token, user: newUser } = res.data;
-        setSession(access_token, refresh_token, newUser);
-        persistSession(access_token, refresh_token, newUser);
+        const { access_token, user: newUser } = res.data;
+        setSession(access_token, newUser);
+        persistSession(newUser);
 
-        refreshQueue.forEach((cb) => cb(access_token));
+        refreshQueue.forEach((item) => item.resolve(access_token));
         refreshQueue = [];
         original.headers.Authorization = `Bearer ${access_token}`;
         return api(original);
-      } catch {
+      } catch (refreshErr) {
+        refreshQueue.forEach((item) => item.reject(refreshErr));
+        refreshQueue = [];
         clearSession();
         clearSessionStorage();
         window.location.href = "/login";
@@ -76,6 +86,5 @@ api.interceptors.response.use(
   }
 );
 
-// Helpers re-exported here to avoid circular imports in some call sites
-import { persistSession, clearSessionStorage } from "./auth";
+// Re-export storage helpers for convenience
 export { persistSession, clearSessionStorage };

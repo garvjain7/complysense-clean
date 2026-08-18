@@ -23,6 +23,9 @@ class SessionRepository:
         expires_at: datetime,
     ) -> str:
         """Insert a new user session and return the session_id UUID."""
+        if expires_at and expires_at.tzinfo is not None:
+            from datetime import UTC
+            expires_at = expires_at.astimezone(UTC).replace(tzinfo=None)
         result = await self.session.execute(
             text(
                 """

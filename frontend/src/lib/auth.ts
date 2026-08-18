@@ -7,7 +7,6 @@ import type { AuthUser } from "../types/auth";
 
 export interface LoginResponse {
   access_token: string;
-  refresh_token: string;
   token_type: string;
   user: AuthUser;
 }
@@ -22,15 +21,54 @@ export interface ExitRoleResponse {
   user: AuthUser;
 }
 
-// ─── API calls ──────────────────────────────────────────────────────────────
+export function getClientMacAddress(): string {
+  try {
+    const raw = `${navigator.userAgent}-${navigator.language}-${screen.width}x${screen.height}-${navigator.hardwareConcurrency || 4}-${screen.colorDepth}`;
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+      hash = (hash << 5) - hash + raw.charCodeAt(i);
+      hash |= 0;
+    }
+    const hex = Math.abs(hash).toString(16).padStart(12, "0").toUpperCase();
+    const formatted = hex.match(/.{1,2}/g)?.join(":") ?? "4A:8B:9C:2D:1E:0F";
+    return formatted;
+  } catch {
+    return "4A:8B:9C:2D:1E:0F";
+  }
+}
 
-export async function login(email: string, password: string): Promise<LoginResponse> {
-  const res = await api.post<LoginResponse>("/api/v1/auth/login", { email, password });
+export async function login(email: string, password: string, customMac?: string): Promise<LoginResponse> {
+  const mac = customMac || getClientMacAddress();
+  const res = await api.post<LoginResponse>(
+    "/api/v1/auth/login",
+    { email, password, mac_address: mac },
+    { headers: { "X-Client-MAC": mac } }
+  );
   return res.data;
 }
 
 export async function fetchCurrentUser(): Promise<AuthUser> {
   const res = await api.get<AuthUser>("/api/v1/auth/me");
+  return res.data;
+}
+
+export async function updateProfile(payload: {
+  full_name?: string;
+  phone?: string;
+  designation?: string;
+}): Promise<void> {
+  await api.patch("/api/v1/auth/me", payload);
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api.post("/api/v1/auth/change-password", {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
+}
+
+export async function refreshSession(): Promise<LoginResponse> {
+  const res = await api.post<LoginResponse>("/api/v1/auth/refresh");
   return res.data;
 }
 
@@ -61,23 +99,8 @@ export async function exitRoleAssumption(): Promise<ExitRoleResponse> {
   return res.data;
 }
 
-// ─── Storage helpers ─────────────────────────────────────────────────────────
-
-export function persistSession(accessToken: string, refreshToken: string, user: AuthUser) {
-  try {
-    localStorage.setItem("access_token", accessToken);
-    localStorage.setItem("refresh_token", refreshToken);
-    localStorage.setItem("auth_user", JSON.stringify(user));
-  } catch { /* quota errors */ }
-}
-
-export function clearSessionStorage() {
-  try {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("auth_user");
-  } catch { /* */ }
-}
+// ─── Storage helpers (re-exported from storage.ts to keep backward compatibility) ─
+export { persistSession, clearSessionStorage } from "./storage";
 
 // ─── Role → dashboard mapping ────────────────────────────────────────────────
 

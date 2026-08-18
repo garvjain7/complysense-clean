@@ -11,10 +11,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import require_permission
 from app.database import get_db_session
-from app.domain.rbac import PermissionKey
+from app.domain.rbac import PermissionKey, RoleName
+from app.repositories.notification import NotificationRepository
 from app.schemas.auth import UserContext
 
+from datetime import date, datetime
+
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+
+def _serialize_date(value: Any) -> str | None:
+    if not value:
+        return None
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return str(value)
 
 
 class CreateTaskPayload(BaseModel):
@@ -44,13 +55,25 @@ async def list_tasks(
     user_ctx: Annotated[UserContext, Depends(require_permission(PermissionKey.VIEW_TASKS))],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> list[dict[str, Any]]:
+    params: dict[str, Any] = {"inst_id": user_ctx.institution_id, "user_id": user_ctx.user_id}
     query = """
-        select task_id, task_title, priority, task_status, due_date, assigned_to, department_id, task_description
+        select task_id, task_title, priority, task_status, due_date, assigned_to, department_id, task_description, assignment_id
         from mitigation_tasks
         where institution_id = :inst_id
-        order by due_date asc nulls last, created_at desc
     """
-    res = await session.execute(text(query), {"inst_id": user_ctx.institution_id})
+    if user_ctx.active_role_name == RoleName.DEPARTMENT_REVIEWER:
+        reviewer_department = await session.execute(
+            text("select department_id from departments where institution_id = :inst_id and reviewer_user_id = :user_id"),
+            params,
+        )
+        dept_row = reviewer_department.mappings().first()
+        if dept_row and dept_row["department_id"]:
+            query += " and (department_id = :dept_id or assigned_to = :user_id)"
+            params["dept_id"] = dept_row["department_id"]
+        else:
+            query += " and assigned_to = :user_id"
+    query += " order by due_date asc nulls last, created_at desc"
+    res = await session.execute(text(query), params)
     rows = res.mappings().all()
     return [
         {
@@ -58,13 +81,42 @@ async def list_tasks(
             "task_title": row["task_title"],
             "priority": row["priority"],
             "task_status": row["task_status"],
-            "due_date": row["due_date"].isoformat() if row["due_date"] else None,
+            "due_date": _serialize_date(row["due_date"]),
             "assigned_to": str(row["assigned_to"]) if row["assigned_to"] else None,
             "department_id": str(row["department_id"]) if row["department_id"] else None,
+            "assignment_id": str(row["assignment_id"]) if row["assignment_id"] else None,
             "task_description": row["task_description"],
         }
         for row in rows
     ]
+
+
+@router.get("/{task_id}", summary="Get a single mitigation task")
+async def get_task(
+    task_id: str,
+    user_ctx: Annotated[UserContext, Depends(require_permission(PermissionKey.VIEW_TASKS))],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, Any]:
+    query = """
+        select task_id, task_title, priority, task_status, due_date, assigned_to, department_id, task_description, assignment_id
+        from mitigation_tasks
+        where task_id = :task_id and institution_id = :inst_id
+    """
+    res = await session.execute(text(query), {"task_id": task_id, "inst_id": user_ctx.institution_id})
+    row = res.mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {
+        "task_id": str(row["task_id"]),
+        "task_title": row["task_title"],
+        "priority": row["priority"],
+        "task_status": row["task_status"],
+        "due_date": _serialize_date(row["due_date"]),
+        "assigned_to": str(row["assigned_to"]) if row["assigned_to"] else None,
+        "department_id": str(row["department_id"]) if row["department_id"] else None,
+        "assignment_id": str(row["assignment_id"]) if row["assignment_id"] else None,
+        "task_description": row["task_description"],
+    }
 
 
 @router.post("", status_code=201, summary="Create a mitigation task")
@@ -96,16 +148,28 @@ async def create_task(
             "created_by": user_ctx.user_id,
         },
     )
-    await session.commit()
     row = res.mappings().first()
     if not row:
         raise HTTPException(status_code=500, detail="Failed to create task")
+
+    if payload.assigned_to:
+        await NotificationRepository(session).create(
+            institution_id=str(user_ctx.institution_id),
+            user_id=str(payload.assigned_to),
+            title="New mitigation task assigned",
+            message=f"You have been assigned the task '{payload.task_title}'.",
+            notification_type="task_assigned",
+            related_entity_type="task",
+            related_entity_id=str(row["task_id"]),
+        )
+
+    await session.commit()
     return {
         "task_id": str(row["task_id"]),
         "task_title": row["task_title"],
         "priority": row["priority"],
         "task_status": row["task_status"],
-        "due_date": row["due_date"].isoformat() if row["due_date"] else None,
+        "due_date": _serialize_date(row["due_date"]),
     }
 
 
@@ -126,10 +190,79 @@ async def update_task(
             values[field] = value
     if not updates:
         raise HTTPException(status_code=400, detail="No update values provided")
-    query = f"update mitigation_tasks set {', '.join(updates)} where task_id = :task_id and institution_id = :inst_id returning task_id"
+    query = f"update mitigation_tasks set {', '.join(updates)}, updated_at = now() where task_id = :task_id and institution_id = :inst_id returning task_id"
     res = await session.execute(text(query), values)
-    await session.commit()
     row = res.mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    if payload.assigned_to:
+        await NotificationRepository(session).create(
+            institution_id=str(user_ctx.institution_id),
+            user_id=str(payload.assigned_to),
+            title="Mitigation task reassigned",
+            message="A mitigation task has been assigned to you.",
+            notification_type="task_assigned",
+            related_entity_type="task",
+            related_entity_id=str(task_id),
+        )
+
+    await session.commit()
     return {"task_id": str(row["task_id"]), "updated": True}
+
+
+@router.post("/{task_id}/submit", summary="Submit a department task and mark the linked control assignment")
+async def submit_task(
+    task_id: str,
+    user_ctx: Annotated[UserContext, Depends(require_permission(PermissionKey.VIEW_TASKS))],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, Any]:
+    task_check = await session.execute(
+        text(
+            "select assignment_id, assigned_to, task_title from mitigation_tasks where task_id = :task_id and institution_id = :inst_id"
+        ),
+        {"task_id": task_id, "inst_id": user_ctx.institution_id},
+    )
+    task_row = task_check.mappings().first()
+    if not task_row:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    res = await session.execute(
+        text(
+            """
+            update mitigation_tasks
+               set task_status = 'completed', completed_at = now(), updated_at = now()
+             where task_id = :task_id and institution_id = :inst_id
+            returning task_id, task_status
+            """
+        ),
+        {"task_id": task_id, "inst_id": user_ctx.institution_id},
+    )
+    if task_row["assignment_id"]:
+        await session.execute(
+            text(
+                """
+                update control_assignments
+                   set status = 'submitted', updated_at = now()
+                 where assignment_id = :assignment_id and institution_id = :inst_id
+                """
+            ),
+            {"assignment_id": task_row["assignment_id"], "inst_id": user_ctx.institution_id},
+        )
+    row = res.mappings().first()
+    if not row:
+        raise HTTPException(status_code=500, detail="Failed to submit task")
+
+    if task_row["assigned_to"]:
+        await NotificationRepository(session).create(
+            institution_id=str(user_ctx.institution_id),
+            user_id=str(task_row["assigned_to"]),
+            title="Mitigation task submitted",
+            message=f"The task '{task_row['task_title']}' has been submitted for review.",
+            notification_type="task_assigned",
+            related_entity_type="task",
+            related_entity_id=str(task_id),
+        )
+
+    await session.commit()
+    return {"task_id": str(row["task_id"]), "task_status": row["task_status"]}

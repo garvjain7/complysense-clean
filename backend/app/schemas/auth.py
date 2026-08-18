@@ -13,6 +13,12 @@ from pydantic import BaseModel, EmailStr, Field
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
+    mac_address: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=6, max_length=128)
 
 
 class RegisterRequest(BaseModel):
@@ -23,10 +29,6 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     phone: str | None = Field(default=None, max_length=15)
     designation: str | None = Field(default=None, max_length=100)
-
-
-class TokenRefreshRequest(BaseModel):
-    refresh_token: str
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -52,24 +54,26 @@ class UpdateProfileRequest(BaseModel):
 class UserContext(BaseModel):
     user_id: str
     institution_id: str
+    institution_name: str | None = None
     role_id: str
     role_name: str
     active_role_id: str
     active_role_name: str
     email: EmailStr
+    full_name: str | None = None
+    phone: str | None = None
+    designation: str | None = None
     permissions: list[str]
     session_id: str
 
 
 class TokenPair(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
 
 
 class LoginResponse(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
     user: UserContext
 

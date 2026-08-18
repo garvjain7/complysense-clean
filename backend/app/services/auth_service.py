@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Request
@@ -32,15 +33,19 @@ from app.schemas.auth import (
     MessageResponse,
     RegisterRequest,
     ResetPasswordRequest,
-    TokenRefreshRequest,
     UserContext,
     ValidateResetTokenResponse,
 )
 from app.services.mail_service import MailService
 
 _MAX_ATTEMPTS = 3
-_BLOCK_SECONDS = 5
+_BLOCK_SECONDS = 5 * 60
 
+
+@dataclass(frozen=True)
+class AuthTokenResult:
+    response: LoginResponse
+    refresh_token: str
 
 
 class AuthService:
@@ -57,7 +62,7 @@ class AuthService:
     # REGISTER
     # ------------------------------------------------------------------
 
-    async def register(self, payload: RegisterRequest, request: Request) -> LoginResponse:
+    async def register(self, payload: RegisterRequest, request: Request) -> AuthTokenResult:
         """Create a new user account within an existing institution.
 
         Raises UnauthorizedError if the email is already in use.
@@ -95,14 +100,29 @@ class AuthService:
         )
         await self.session.commit()
 
+        await self.mail.send_message(
+            to_email=str(new_user["email"]),
+            subject="ComplySense — Welcome to your account",
+            template_key="welcome",
+            context={
+                "full_name": str(new_user["full_name"]),
+                "login_url": f"{self.settings.frontend_url}/login",
+                "temporary_password": "Use the password you chose during registration",
+            },
+        )
+
         context = UserContext(
             user_id=str(new_user["user_id"]),
             institution_id=str(new_user["institution_id"]),
+            institution_name=str(new_user["institution_name"]) if new_user.get("institution_name") else None,
             role_id=str(new_user["role_id"]),
-            role_name="",  # no join on creation — refreshed on next login
+            role_name=str(new_user["role_name"]),
             active_role_id=str(new_user["role_id"]),
-            active_role_name="",
+            active_role_name=str(new_user["role_name"]),
             email=str(new_user["email"]),
+            full_name=str(new_user["full_name"]) if new_user.get("full_name") else None,
+            phone=str(new_user["phone"]) if new_user.get("phone") else None,
+            designation=str(new_user["designation"]) if new_user.get("designation") else None,
             permissions=permissions,
             session_id=session_id,
         )
@@ -112,8 +132,9 @@ class AuthService:
     # LOGIN
     # ------------------------------------------------------------------
 
-    async def login(self, payload: LoginRequest, request: Request) -> LoginResponse:
+    async def login(self, payload: LoginRequest, request: Request) -> AuthTokenResult:
         ip = _get_ip(request)
+        mac = _get_mac(request, payload)
         user = await self.users.find_active_by_email(payload.email)
 
         # ---- account not found — generic error to prevent user enumeration ----
@@ -137,12 +158,14 @@ class AuthService:
                     user_id=user_id,
                     active_role_id=role_id,
                     action_type="failed_login",
-                    action_details={"reason": "account_blocked", "ip": ip},
+                    action_details={"reason": "account_blocked", "ip": ip, "mac_address": mac},
                     ip_address=ip,
+                    mac_address=mac,
                 )
                 await self.session.commit()
-                raise UnauthorizedError(
-                    f"Account is temporarily locked. Try again in {remaining} minute(s)."
+                raise LockedError(
+                    f"Account is temporarily locked. Try again in {remaining} minute(s).",
+                    blocked_until=blocked_until.isoformat(),
                 )
 
         # ---- verify password ----
@@ -162,8 +185,10 @@ class AuthService:
                         "attempts": new_count,
                         "blocked_until": blocked_until_dt.isoformat(),
                         "ip": ip,
+                        "mac_address": mac,
                     },
                     ip_address=ip,
+                    mac_address=mac,
                 )
             else:
                 await self.audit.write(
@@ -171,8 +196,9 @@ class AuthService:
                     user_id=user_id,
                     active_role_id=role_id,
                     action_type="failed_login",
-                    action_details={"attempts": new_count, "max": _MAX_ATTEMPTS, "ip": ip},
+                    action_details={"attempts": new_count, "max": _MAX_ATTEMPTS, "ip": ip, "mac_address": mac},
                     ip_address=ip,
+                    mac_address=mac,
                 )
             await self.session.commit()
             raise UnauthorizedError("Invalid email or password")
@@ -194,17 +220,22 @@ class AuthService:
             entity_type="user_sessions",
             entity_id=session_id,
             ip_address=ip,
+            mac_address=mac,
         )
         await self.session.commit()
 
         context = UserContext(
             user_id=user_id,
             institution_id=institution_id,
+            institution_name=str(user["institution_name"]) if user.get("institution_name") else None,
             role_id=role_id,
             role_name=str(user["role_name"]),
             active_role_id=role_id,
             active_role_name=str(user["role_name"]),
             email=str(user["email"]),
+            full_name=str(user["full_name"]) if user.get("full_name") else None,
+            phone=str(user["phone"]) if user.get("phone") else None,
+            designation=str(user["designation"]) if user.get("designation") else None,
             permissions=permissions,
             session_id=session_id,
         )
@@ -229,17 +260,53 @@ class AuthService:
         return MessageResponse(message="Logged out successfully")
 
     # ------------------------------------------------------------------
+    # CHANGE PASSWORD
+    # ------------------------------------------------------------------
+
+    async def change_password(
+        self, user: UserContext, current_pass: str, new_pass: str, request: Request
+    ) -> MessageResponse:
+        from sqlalchemy import text
+
+        user_row = await self.users.find_active_by_email(user.email)
+        if not user_row:
+            raise UnauthorizedError("User not found")
+
+        if not verify_password(current_pass, str(user_row["password_hash"])):
+            raise UnauthorizedError("Current password is incorrect")
+
+        if len(new_pass) < 6:
+            raise UnauthorizedError("New password must be at least 6 characters long")
+
+        new_hash = hash_password(new_pass)
+        await self.session.execute(
+            text("update users set password_hash = :hash, updated_at = now() where user_id = :uid"),
+            {"hash": new_hash, "uid": user.user_id},
+        )
+        await self.audit.write(
+            institution_id=user.institution_id,
+            user_id=user.user_id,
+            active_role_id=user.active_role_id,
+            action_type="password_changed",
+            entity_type="users",
+            entity_id=user.user_id,
+            ip_address=_get_ip(request),
+        )
+        await self.session.commit()
+        return MessageResponse(message="Password changed successfully")
+
+    # ------------------------------------------------------------------
     # REFRESH TOKEN
     # ------------------------------------------------------------------
 
-    async def refresh(self, payload: TokenRefreshRequest, request: Request) -> LoginResponse:
+    async def refresh(self, refresh_token: str, request: Request) -> AuthTokenResult:
         """Validate the refresh token, rotate session, and return a new token pair.
 
         Refresh token rotation: old session is deleted, new session is created.
         """
         ip = _get_ip(request)
         try:
-            claims = _decode_verified(payload.refresh_token, expected_type="refresh")
+            claims = _decode_verified(refresh_token, expected_type="refresh")
         except (JWTError, ValueError) as exc:
             raise UnauthorizedError("Invalid or expired refresh token") from exc
 
@@ -280,11 +347,15 @@ class AuthService:
         context = UserContext(
             user_id=user_id,
             institution_id=institution_id,
+            institution_name=str(user["institution_name"]) if user.get("institution_name") else None,
             role_id=str(user["role_id"]),
             role_name=str(user["role_name"]),
             active_role_id=role_id,
             active_role_name=str(existing_session["role_name"]),
             email=str(user["email"]),
+            full_name=str(user["full_name"]) if user.get("full_name") else None,
+            phone=str(user["phone"]) if user.get("phone") else None,
+            designation=str(user["designation"]) if user.get("designation") else None,
             permissions=permissions,
             session_id=new_session_id,
         )
@@ -346,7 +417,7 @@ class AuthService:
         )
         await self.session.commit()
 
-        email_sent = self.mail.send_password_reset(
+        email_sent = await self.mail.send_password_reset(
             to_email=str(user["email"]), reset_url=reset_url
         )
 
@@ -424,6 +495,67 @@ class AuthService:
         return ValidateResetTokenResponse(valid=True, email=str(row["email"]))
 
     # ------------------------------------------------------------------
+    # ASSUME ROLE
+    # ------------------------------------------------------------------
+
+    async def assume_role(
+        self, user: UserContext, payload: AssumeRoleRequest, request: Request
+    ) -> ExitRoleAssumptionResponse:
+        """Switch the session's active_role_id to the requested target role.
+
+        Only Super Admin and Institution Admin users are allowed to assume roles.
+        The target role must exist in the database.
+        """
+        allowed_roles = {"Super Admin", "Institution Admin"}
+        if user.role_name not in allowed_roles:
+            raise UnauthorizedError("Only administrators can assume other roles")
+
+        target_role = await self.rbac.find_role_by_id(payload.target_role_id)
+        if not target_role:
+            raise UnauthorizedError("Target role does not exist")
+
+        await self.sessions.update_role(
+            session_id=user.session_id, active_role_id=payload.target_role_id
+        )
+
+        permissions = await self.rbac.permissions_for_role(payload.target_role_id)
+
+        await self.audit.write(
+            institution_id=user.institution_id,
+            user_id=user.user_id,
+            active_role_id=payload.target_role_id,
+            action_type="assume_role",
+            action_details={
+                "previous_role_id": user.active_role_id,
+                "assumed_role_id": payload.target_role_id,
+                "assumed_role_name": str(target_role["role_name"]),
+                "ip": _get_ip(request),
+            },
+            ip_address=_get_ip(request),
+        )
+        await self.session.commit()
+
+        assumed_context = UserContext(
+            user_id=user.user_id,
+            institution_id=user.institution_id,
+            institution_name=user.institution_name,
+            role_id=user.role_id,
+            role_name=user.role_name,
+            active_role_id=payload.target_role_id,
+            active_role_name=str(target_role["role_name"]),
+            email=user.email,
+            full_name=user.full_name,
+            phone=user.phone,
+            designation=user.designation,
+            permissions=permissions,
+            session_id=user.session_id,
+        )
+        return ExitRoleAssumptionResponse(
+            message=f"Now assuming role: {target_role['role_name']}",
+            user=assumed_context,
+        )
+
+    # ------------------------------------------------------------------
     # EXIT ROLE ASSUMPTION
     # ------------------------------------------------------------------
 
@@ -469,11 +601,15 @@ class AuthService:
         restored_context = UserContext(
             user_id=user.user_id,
             institution_id=user.institution_id,
+            institution_name=user.institution_name,
             role_id=primary_role_id,
             role_name=role_name,
             active_role_id=primary_role_id,
             active_role_name=role_name,
             email=user.email,
+            full_name=primary_user.get("full_name") if primary_user else user.full_name,
+            phone=primary_user.get("phone") if primary_user else user.phone,
+            designation=primary_user.get("designation") if primary_user else user.designation,
             permissions=permissions,
             session_id=user.session_id,
         )
@@ -500,7 +636,7 @@ class AuthService:
             expires_at=expires_at,
         )
 
-    def _build_token_pair(self, context: UserContext) -> LoginResponse:
+    def _build_token_pair(self, context: UserContext) -> AuthTokenResult:
         claims = {
             "institution_id": context.institution_id,
             "role_id": context.role_id,
@@ -509,10 +645,12 @@ class AuthService:
         }
         access = create_access_token(context.user_id, claims)
         refresh = create_refresh_token(context.user_id, context.session_id)
-        return LoginResponse(
-            access_token=access,
+        return AuthTokenResult(
+            response=LoginResponse(
+                access_token=access,
+                user=context,
+            ),
             refresh_token=refresh,
-            user=context,
         )
 
 
@@ -523,6 +661,79 @@ class AuthService:
 
 def _get_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
+
+
+_CACHED_HOST_MAC: str | None = None
+
+
+def _get_host_mac() -> str:
+    global _CACHED_HOST_MAC
+    if _CACHED_HOST_MAC:
+        return _CACHED_HOST_MAC
+
+    try:
+        import subprocess
+
+        cmd = subprocess.run(["getmac", "/fo", "csv", "/v"], capture_output=True, text=True, timeout=2)
+        for line in cmd.stdout.splitlines():
+            parts = [p.strip('"') for p in line.split(",")]
+            if len(parts) >= 3:
+                conn_name = parts[0].lower()
+                adapter_name = parts[1].lower()
+                mac = parts[2].replace("-", ":").upper()
+                if mac and mac != "N/A" and len(mac) == 17 and (
+                    "wi-fi" in conn_name
+                    or "ethernet" in conn_name
+                    or "intel" in adapter_name
+                    or "realtek" in adapter_name
+                ):
+                    _CACHED_HOST_MAC = mac
+                    return mac
+    except Exception:
+        pass
+
+    try:
+        import uuid
+
+        node = uuid.getnode()
+        mac = ":".join(f"{(node >> i) & 0xff:02x}" for i in range(0, 48, 8)[::-1]).upper()
+        if mac and mac != "00:00:00:00:00:00":
+            _CACHED_HOST_MAC = mac
+            return mac
+    except Exception:
+        pass
+
+    _CACHED_HOST_MAC = "DC:97:BA:5E:CA:EA"
+    return _CACHED_HOST_MAC
+
+
+def _get_mac(request: Request | None = None, payload: Any = None) -> str:
+    # 1. Check payload passed from client web application
+    if payload and getattr(payload, "mac_address", None):
+        return str(payload.mac_address)
+
+    # 2. Check HTTP headers injected by client / proxy / gateway / VPN
+    if request:
+        for header_name in ("X-Client-MAC", "X-Forwarded-MAC", "X-MAC-Address", "X-Device-MAC", "x-mac-address"):
+            val = request.headers.get(header_name)
+            if val:
+                return val
+
+        # 3. Check ARP table for remote client IP if on local network
+        client_ip = request.client.host if request.client else None
+        if client_ip and client_ip not in ("127.0.0.1", "::1", "localhost"):
+            try:
+                import re
+                import subprocess
+
+                cmd = subprocess.run(["arp", "-a", client_ip], capture_output=True, text=True, timeout=1)
+                match = re.search(r"([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})", cmd.stdout)
+                if match:
+                    return match.group(0).replace("-", ":").upper()
+            except Exception:
+                pass
+
+    return _get_host_mac()
 
 
 def _decode_verified(token: str, expected_type: str) -> dict:

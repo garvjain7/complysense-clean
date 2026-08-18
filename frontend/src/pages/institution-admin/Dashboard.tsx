@@ -5,8 +5,8 @@ import { Link } from "react-router-dom";
 import { api } from "../../lib/api";
 import { PageShell } from "../../components/shared/PageShell";
 import { useAuthStore } from "../../store/authStore";
-import { BarChart3, AlertTriangle, Shield, Siren, Sparkles, RefreshCw, ChevronRight } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart3, AlertTriangle, Shield, Siren, Sparkles, RefreshCw } from "lucide-react";
+import { getFrameworkColor } from "../../lib/frameworkColors";
 
 interface DashboardStats {
   overall_compliance: number;
@@ -132,11 +132,20 @@ export default function AdminDashboard() {
   async function handleGenerateRiskHeatmap() {
     setAiLoading(true);
     try {
-      const res = await api.get("/api/v1/institutions/dashboard");
-      setAiRisks(res.data.ai_risks ?? []);
-      setAiGenTime("Just now");
+      const res = await api.post("/api/v1/ai/admin/risk-heatmap", {});
+      // The AI endpoint returns { ai_risks: [...], raw_response: {...} }
+      const risks = res.data?.ai_risks ?? [];
+      if (Array.isArray(risks) && risks.length > 0) {
+        setAiRisks(risks as AIRisk[]);
+        setAiGenTime(new Date().toLocaleTimeString());
+      } else {
+        // Fallback: re-fetch dashboard static risks
+        const dashRes = await api.get("/api/v1/institutions/dashboard");
+        setAiRisks(dashRes.data.ai_risks ?? []);
+        setAiGenTime("Just now");
+      }
     } catch {
-      // keep the existing list if refresh fails
+      // Keep existing list if refresh fails; surface nothing to user
     }
     setAiLoading(false);
   }
@@ -192,18 +201,30 @@ export default function AdminDashboard() {
         <div className="card">
           <div className="card-header"><h2 className="card-title">Framework Compliance</h2></div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {frameworks.map((fw) => (
-              <div key={fw.framework_name}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>{fw.framework_name}</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: fw.percentage > 75 ? "var(--success)" : fw.percentage >= 50 ? "var(--warning)" : "var(--danger)" }}>{fw.percentage}%</span>
-                    <TrendArrow trend={fw.trend} />
+            {frameworks.map((fw) => {
+              const colors = getFrameworkColor(fw.framework_name);
+              return (
+                <div key={fw.framework_name}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, alignItems: "center" }}>
+                    <span 
+                      className="badge" 
+                      style={{ 
+                        backgroundColor: colors.bg, 
+                        color: colors.text,
+                        border: `1px solid ${colors.border}`
+                      }}
+                    >
+                      {fw.framework_name}
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: fw.percentage > 75 ? "var(--success)" : fw.percentage >= 50 ? "var(--warning)" : "var(--danger)" }}>{fw.percentage}%</span>
+                      <TrendArrow trend={fw.trend} />
+                    </div>
                   </div>
+                  <ProgressBar pct={fw.percentage} />
                 </div>
-                <ProgressBar pct={fw.percentage} />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -293,7 +314,7 @@ export default function AdminDashboard() {
                   <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 8 }}>{ACTION_LABELS[log.action_type] ?? log.action_type}</span>
                 </div>
                 <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                  {new Date(log.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                  {new Date(log.created_at.endsWith("Z") || log.created_at.includes("+") ? log.created_at : log.created_at + "Z").toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
                 </span>
               </div>
             ))}

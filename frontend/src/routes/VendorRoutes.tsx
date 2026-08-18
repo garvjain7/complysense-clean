@@ -7,6 +7,8 @@ import Dashboard from "../pages/vendor/Dashboard";
 import ExpiryTracker from "../pages/vendor/ExpiryTracker";
 import NewVendor from "../pages/vendor/NewVendor";
 import VendorDetail from "../pages/vendor/VendorDetail";
+import Chat from "../pages/vendor/Chat";
+import Notifications from "../pages/compliance/Notifications";
 
 export const vendorRoutes: RouteObject = {
   path: "/vendor",
@@ -19,6 +21,8 @@ export const vendorRoutes: RouteObject = {
     { path: "dashboard", element: <Dashboard /> },
     { path: "vendors/new", element: <NewVendor /> },
     { path: "vendors/:id", element: <VendorDetail /> },
-    { path: "expiry", element: <ExpiryTracker /> }
+    { path: "expiry", element: <ExpiryTracker /> },
+    { path: "chat", element: <Chat /> },
+    { path: "notifications", element: <Notifications /> }
   ]
 };

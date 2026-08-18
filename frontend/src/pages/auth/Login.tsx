@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff, Lock, AlertCircle } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
-import { login, persistSession, roleDashboard } from "../../lib/auth";
+import { login, roleDashboard } from "../../lib/auth";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -50,10 +50,12 @@ export default function Login() {
     setLoading(true);
     try {
       const data = await login(email, password);
-      setSession(data.access_token, data.refresh_token, data.user);
-      persistSession(data.access_token, data.refresh_token, data.user);
+      setSession(data.access_token, data.user);
+      const targetDashboard = roleDashboard(data.user.role_name);
       const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
-      navigate(from ?? roleDashboard(data.user.role_name), { replace: true });
+      const targetSection = targetDashboard.split("/")[1];
+      const isFromAllowed = from && from !== "/login" && targetSection && from.startsWith(`/${targetSection}`);
+      navigate(isFromAllowed ? from : targetDashboard, { replace: true });
     } catch (err: unknown) {
       const status = (err as { response?: { status: number; data?: { blocked_until?: string } } })
         ?.response?.status;
@@ -61,8 +63,9 @@ export default function Login() {
         ?.response?.data;
 
       if (status === 423 || status === 429) {
-        const until = detail?.blocked_until
-          ? new Date(detail.blocked_until)
+        const blockedUntil = detail?.blocked_until ?? (detail as { error?: { blocked_until?: string } })?.error?.blocked_until;
+        const until = blockedUntil
+          ? new Date(blockedUntil)
           : new Date(Date.now() + 5000);
         setLockedUntil(until);
         setError("Too many failed attempts. Account temporarily locked.");

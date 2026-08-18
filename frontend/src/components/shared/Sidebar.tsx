@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuthStore, useNotificationStore } from "../../store/authStore";
-import { logoutApi, clearSessionStorage, roleDashboard } from "../../lib/auth";
+import { logoutApi, clearSessionStorage } from "../../lib/auth";
 import { useState } from "react";
 import type { RoleName } from "../../types/roles";
 
@@ -50,27 +50,32 @@ const NAV_MAP: Record<RoleName, NavItemDef[]> = {
     { to: "/compliance/policies",       label: "Policies",      icon: FileText },
     { to: "/compliance/tasks",          label: "Tasks",         icon: CheckSquare },
     { to: "/compliance/notifications",  label: "Notifications", icon: Bell,          badge: "unread" },
+    { to: "/compliance/chat",           label: "Ask AI",        icon: Bot },
   ],
   "IT Security Officer": [
     { to: "/security/dashboard",  label: "Dashboard", icon: ShieldAlert },
     { to: "/security/incidents",  label: "Incidents", icon: Siren,   badge: "pending" },
     { to: "/security/controls",   label: "Controls",  icon: Settings2 },
     { to: "/security/evidence",   label: "Evidence",  icon: Upload },
+    { to: "/security/chat",       label: "Ask AI",    icon: Bot },
   ],
   "Auditor": [
     { to: "/auditor/workspace",    label: "Workspace",    icon: Microscope },
     { to: "/auditor/observations", label: "Observations", icon: MessageSquare },
     { to: "/auditor/reports",      label: "Reports",      icon: FileText },
+    { to: "/auditor/chat",         label: "Ask AI",       icon: Bot },
   ],
   "Department Reviewer": [
     { to: "/dept/dashboard",       label: "Dashboard",      icon: LayoutDashboard },
     { to: "/dept/tasks",           label: "My Tasks",       icon: CheckSquare, badge: "pending" },
     { to: "/dept/evidence",        label: "Evidence Vault", icon: Archive },
     { to: "/dept/self-assessment", label: "Self Assessment",icon: ClipboardCheck },
+    { to: "/dept/chat",            label: "Ask AI",         icon: Bot },
   ],
   "Vendor Reviewer": [
     { to: "/vendor/dashboard", label: "Vendor Register", icon: Store },
     { to: "/vendor/expiry",    label: "Expiry Tracker",  icon: CalendarX },
+    { to: "/vendor/chat",      label: "Ask AI",          icon: Bot },
   ],
   "Policy Approver": [
     { to: "/policy/inbox",   label: "Inbox",          icon: Inbox, badge: "pending" },
@@ -83,9 +88,12 @@ const NAV_MAP: Record<RoleName, NavItemDef[]> = {
   ],
 };
 
-// ─── Sidebar Component ────────────────────────────────────────────────────────
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
+}
 
-export function Sidebar() {
+export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const { user, clearSession } = useAuthStore();
   const { unreadCount } = useNotificationStore();
   const navigate = useNavigate();
@@ -110,7 +118,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
       {/* Brand */}
       <div className="sidebar-brand">
         <div className="sidebar-brand-row">
@@ -121,7 +129,7 @@ export function Sidebar() {
         </div>
         {user.role_name !== "Super Admin" && (
           <div className="sidebar-institution-name">
-            {user.institution_id}
+            {user.institution_name ?? user.institution_id}
           </div>
         )}
       </div>
@@ -137,6 +145,7 @@ export function Sidebar() {
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={() => onCloseMobile?.()}
               className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
               end={item.to.endsWith("dashboard")}
             >

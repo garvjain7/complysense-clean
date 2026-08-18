@@ -5,10 +5,9 @@ import type { AuthUser } from "../types/auth";
 
 interface AuthState {
   token: string | null;
-  refreshToken: string | null;
   user: AuthUser | null;
   isHydrated: boolean;
-  setSession: (token: string, refreshToken: string, user: AuthUser) => void;
+  setSession: (token: string, user: AuthUser) => void;
   updateUser: (user: AuthUser) => void;
   clearSession: () => void;
   setHydrated: () => void;
@@ -16,14 +15,13 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   token: null,
-  refreshToken: null,
   user: null,
   isHydrated: false,
-  setSession: (token, refreshToken, user) =>
-    set({ token, refreshToken, user }),
+  setSession: (token, user) =>
+    set({ token, user }),
   updateUser: (user) => set({ user }),
   clearSession: () =>
-    set({ token: null, refreshToken: null, user: null }),
+    set({ token: null, user: null }),
   setHydrated: () => set({ isHydrated: true }),
 }));
 
@@ -34,6 +32,8 @@ export interface Notification {
   type: string;
   title: string;
   message: string;
+  notification_type?: string;
+  related_entity_type?: string;
   is_read: boolean;
   created_at: string;
   related_entity_id?: string;
@@ -67,20 +67,11 @@ interface ThemeState {
 }
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
-  dark: (() => {
-    try {
-      const saved = localStorage.getItem("cs_dark");
-      if (saved !== null) return saved === "true";
-      return window.matchMedia("(prefers-color-scheme: dark)").matches;
-    } catch {
-      return false;
-    }
-  })(),
+  dark: false,
   toggleDark: () => {
     const next = !get().dark;
     set({ dark: next });
     try {
-      localStorage.setItem("cs_dark", String(next));
       document.documentElement.classList.toggle("dark", next);
     } catch { /* */ }
   },

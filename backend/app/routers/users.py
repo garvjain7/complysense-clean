@@ -8,11 +8,13 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.permissions import require_permission
 from app.core.security import hash_password
 from app.database import get_db_session
 from app.domain.rbac import PermissionKey, RoleName
 from app.schemas.auth import UserContext
+from app.services.mail_service import MailService
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -46,6 +48,7 @@ class UserStatusToggle(BaseModel):
 async def list_institution_users(
     user_ctx: Annotated[UserContext, Depends(require_permission(PermissionKey.MANAGE_USERS))],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    institution_id: str | None = Query(None),
     role: str | None = Query(None),
     status: str | None = Query(None),
     search: str | None = Query(None),
@@ -59,10 +62,21 @@ async def list_institution_users(
                d.department_name, d.department_id
           from users u
           join roles r on r.role_id = u.role_id
-          left join departments d on d.reviewer_user_id = u.user_id
-         where u.institution_id = :inst_id
+         where 1=1
     """
-    params: dict[str, Any] = {"inst_id": user_ctx.institution_id}
+    is_super_admin = str(user_ctx.active_role_name).lower() == RoleName.SUPER_ADMIN.value.lower()
+    scoped_institution_id = (
+        institution_id
+        if institution_id and is_super_admin
+        else user_ctx.institution_id
+    )
+    params: dict[str, Any] = {}
+    if scoped_institution_id:
+        query_str += " and u.institution_id = :inst_id"
+        params["inst_id"] = scoped_institution_id
+    elif not is_super_admin:
+        query_str += " and u.institution_id = :inst_id"
+        params["inst_id"] = user_ctx.institution_id
 
     if role and role != "All":
         query_str += " and r.role_name = :role_name"
@@ -198,6 +212,7 @@ class UserInvite(BaseModel):
     email: EmailStr
     role_name: str
     department_id: str | None = None
+    institution_id: str | None = None
 
 
 class UserRoleUpdate(BaseModel):
@@ -214,6 +229,12 @@ async def invite_user(
     user_ctx: Annotated[UserContext, Depends(require_permission(PermissionKey.MANAGE_USERS))],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> dict[str, Any]:
+    target_inst_id = (
+        payload.institution_id
+        if (user_ctx.active_role_name == RoleName.SUPER_ADMIN.value and payload.institution_id)
+        else user_ctx.institution_id
+    )
+
     role_row = await session.execute(
         text("select role_id from roles where role_name = :role_name"),
         {"role_name": payload.role_name},
@@ -229,7 +250,7 @@ async def invite_user(
     if existing.mappings().first():
         raise HTTPException(status_code=400, detail="A user with this email already exists")
 
-    setup_pass = "SetupTemp123!"
+    setup_pass = "Comply@2025"
     pass_hash = hash_password(setup_pass)
 
     insert_user = """
@@ -245,7 +266,7 @@ async def invite_user(
         res = await session.execute(
             text(insert_user),
             {
-                "inst_id": user_ctx.institution_id,
+                "inst_id": target_inst_id,
                 "role_id": role["role_id"],
                 "full_name": payload.full_name,
                 "email": payload.email,
@@ -271,7 +292,7 @@ async def invite_user(
                 {
                     "user_id": new_user_id,
                     "dept_id": payload.department_id,
-                    "inst_id": user_ctx.institution_id,
+                    "inst_id": target_inst_id,
                 },
             )
 
@@ -413,6 +434,77 @@ async def unlock_user(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+class AdminPasswordResetPayload(BaseModel):
+    new_password: str | None = None
+
+
+@router.post(
+    "/{user_id}/reset-password",
+    summary="Reset password for any user (Super Admin or Institution Admin)",
+)
+async def admin_reset_password(
+    user_id: str,
+    user_ctx: Annotated[UserContext, Depends(require_permission(PermissionKey.MANAGE_USERS))],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    payload: AdminPasswordResetPayload | None = None,
+) -> dict[str, Any]:
+    new_password = (payload.new_password if payload and payload.new_password else "Comply@2025")
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    new_hash = hash_password(new_password)
+
+    query = """
+        update users
+           set password_hash = :hash,
+               failed_login_attempts = 0,
+               blocked_until = null,
+               updated_at = now()
+         where user_id = :user_id
+    """
+    params: dict[str, Any] = {"hash": new_hash, "user_id": user_id}
+
+    if user_ctx.active_role_name != RoleName.SUPER_ADMIN.value:
+        query += " and institution_id = :inst_id"
+        params["inst_id"] = user_ctx.institution_id
+
+    query += " returning user_id, full_name, email"
+
+    try:
+        res = await session.execute(text(query), params)
+        row = res.mappings().first()
+        if not row:
+            await session.rollback()
+            raise HTTPException(status_code=404, detail="User not found")
+
+        await session.execute(
+            text(
+                """
+                insert into audit_logs (institution_id, user_id, active_role_id, action_type, entity_type, entity_id, action_details)
+                values (:inst_id, :admin_id, :role_id, 'admin_password_reset', 'user', :entity_id, '{"method": "admin_reset"}')
+                """
+            ),
+            {
+                "inst_id": user_ctx.institution_id,
+                "admin_id": user_ctx.user_id,
+                "role_id": user_ctx.active_role_id,
+                "entity_id": user_id,
+            },
+        )
+        await session.commit()
+        return {
+            "user_id": str(row["user_id"]),
+            "email": row["email"],
+            "message": f"Password reset successfully to '{new_password}'",
+            "new_password": new_password,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.patch(
     "/{user_id}",
     summary="Update a user's details",
@@ -442,6 +534,15 @@ async def update_user(
             """
             res = await session.execute(text(query), params)
             if not res.mappings().first():
+                await session.rollback()
+                raise HTTPException(status_code=404, detail="User not found")
+        else:
+            # No user fields to update — still verify the user exists
+            check = await session.execute(
+                text("select user_id from users where user_id = :user_id and institution_id = :inst_id"),
+                {"user_id": user_id, "inst_id": user_ctx.institution_id},
+            )
+            if not check.mappings().first():
                 await session.rollback()
                 raise HTTPException(status_code=404, detail="User not found")
 

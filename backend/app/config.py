@@ -14,7 +14,15 @@ class Settings(BaseSettings):
     api_port: int = 8000
     api_version: str = "v1"
     log_level: str = "INFO"
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    cors_origins: str | list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+
+    @classmethod
+    def _parse_list_value(cls, value: str | list[str] | None) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     database_url: PostgresDsn
 
@@ -30,6 +38,9 @@ class Settings(BaseSettings):
     secret_key: str = Field(min_length=32)
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 7
+    refresh_cookie_name: str = "complysense_refresh"
+    refresh_cookie_secure: bool = True
+    refresh_cookie_samesite: str = "lax"
     jwt_algorithm: str = "HS256"
 
     # SMTP — Gmail address and App Password only.
@@ -37,17 +48,20 @@ class Settings(BaseSettings):
     smtp_user: str | None = None
     smtp_password: str | None = None
 
-    main_api_url: str = "http://localhost:8000"
+    main_api_url: str = "http://127.0.0.1:8000"
+    ai_service_url: str = "http://127.0.0.1:8001"
     openai_api_key: str | None = None
+
+    # Optional: must match ADMIN_REINDEX_KEY env var on the AI service.
+    # Leave blank to leave reindex endpoint disabled on the AI side.
+    ai_admin_reindex_key: str | None = None
 
     frontend_url: str = "http://localhost:5173"
 
     @field_validator("cors_origins", mode="before")
     @classmethod
-    def parse_cors_origins(cls, value: str | list[str]) -> list[str]:
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        return value
+    def parse_cors_origins(cls, value: str | list[str] | None) -> list[str]:
+        return cls._parse_list_value(value)
 
 
 @lru_cache

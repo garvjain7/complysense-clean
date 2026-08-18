@@ -8,11 +8,13 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.deps import get_current_user
 from app.core.permissions import require_permission
 from app.database import get_db_session
 from app.domain.rbac import PermissionKey
 from app.schemas.auth import UserContext
+from app.services.mail_service import MailService
 
 router = APIRouter(prefix="/departments", tags=["departments"])
 
@@ -127,12 +129,21 @@ async def create_department(
             },
         )
         row = res.mappings().first()
-        await session.commit()
-        if not row:
-            raise HTTPException(status_code=500, detail="Failed to insert department")
-        
         d = dict(row)
-        d["department_id"] = str(d["department_id"])
+        dept_id = str(d["department_id"])
+        d["department_id"] = dept_id
+
+        from app.repositories.audit import AuditLogRepository
+        await AuditLogRepository(session).write(
+            institution_id=user_ctx.institution_id,
+            user_id=user_ctx.user_id,
+            active_role_id=user_ctx.active_role_id,
+            action_type="department_created",
+            entity_type="department",
+            entity_id=dept_id,
+            action_details={"department_name": payload.department_name},
+        )
+        await session.commit()
         return d
     except Exception as exc:
         await session.rollback()
@@ -196,6 +207,29 @@ async def update_department(
 
         # Write audit log if reviewer assigned
         if payload.reviewer_user_id:
+            reviewer_email_row = await session.execute(
+                text(
+                    """
+                    select email, full_name
+                      from users
+                     where user_id = :user_id
+                       and institution_id = :inst_id
+                    """
+                ),
+                {"user_id": payload.reviewer_user_id, "inst_id": user_ctx.institution_id},
+            )
+            reviewer_row = reviewer_email_row.mappings().first()
+            if reviewer_row:
+                await MailService().send_message(
+                    to_email=str(reviewer_row["email"]),
+                    subject="ComplySense — You’ve been assigned as a department reviewer",
+                    template_key="workflow",
+                    context={
+                        "title": "Department reviewer assignment",
+                        "message": f"You have been assigned as the reviewer for department {dept_id}.",
+                        "action_url": f"{get_settings().frontend_url}/departments",
+                    },
+                )
             await session.execute(
                 text(
                     """
