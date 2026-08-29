@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from typing import Annotated, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.core.deps import get_current_user
 from app.core.permissions import require_permission
 from app.database import get_db_session
 from app.domain.rbac import PermissionKey

@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any
 from uuid import uuid4
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession

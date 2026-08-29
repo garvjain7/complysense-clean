@@ -2,7 +2,6 @@
 # Upgraded: merges local jailbreak check with PR's framework-keyword citation check.
 # Replaces the thin wrapper that only detected jailbreak strings.
 
-import re
 from typing import Any, Dict, List
 
 from ai_service.utils.logger import StructuredLogger

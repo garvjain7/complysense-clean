@@ -1,6 +1,5 @@
 # Use: Helper module to build a live operational database snapshot for grounding AI queries.
 
-from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 

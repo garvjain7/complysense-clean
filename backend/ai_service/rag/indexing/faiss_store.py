@@ -126,10 +126,10 @@ class FAISSIndexStore:
         faiss.normalize_L2(q)
 
         k_request = min(max(top_k, 20), len(self.items))
-        D, I = self.index.search(q, k_request)
+        distances, indices = self.index.search(q, k_request)
 
         results: List[Tuple[int, float]] = []
-        for idx, score in zip(I[0].tolist(), D[0].tolist()):
+        for idx, score in zip(indices[0].tolist(), distances[0].tolist()):
             if idx == -1:
                 continue
             results.append((int(idx), float(score)))

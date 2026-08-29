@@ -2,7 +2,7 @@
 # Updated: removed app.database import; uses decoupled utils/database.py session factory.
 
 import json
-from typing import Any, Dict, List
+from typing import Dict, List
 
 from sqlalchemy import text
 

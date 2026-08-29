@@ -1,6 +1,6 @@
 # Use: Builds the final prompt (system + role + formatting rules + history + retrieved chunks + task).
 
-from typing import List, Dict, Any
+from typing import List, Dict
 
 from ai_service.prompts.output_rules import FORMATTING_INSTRUCTIONS
 

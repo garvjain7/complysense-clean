@@ -1,7 +1,7 @@
 # Use: Router for inspecting active roles and permissions.
 
 from typing import Annotated, Any
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 

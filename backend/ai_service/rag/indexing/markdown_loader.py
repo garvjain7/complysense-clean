@@ -2,8 +2,9 @@
 # Updated: Uses decoupled Supabase client (no app.* imports). Supports structured node parsing.
 
 import os
-from typing import List, Dict, Any
+import re
 from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 from ai_service.config import get_ai_settings
 from ai_service.utils.supabase import download_file_from_bucket
@@ -31,9 +32,6 @@ FILES_TO_DOWNLOAD: List[tuple] = [
 
 
 # ── Structured node parser (taken from PR) ─────────────────────────────────────
-
-import re
-from typing import Tuple
 
 
 def _parse_frontmatter(text: str) -> Tuple[Dict[str, Any], str]:

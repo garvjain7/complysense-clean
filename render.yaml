@@ -1,38 +1,48 @@
-services:
-  - type: web
-    name: complysense-api
-    runtime: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /health/live
+envVarGroups:
+  - name: complysense-shared-env
     envVars:
       - key: ENVIRONMENT
         value: production
-      - key: CORS_ORIGINS
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: MONGODB_URI
-        sync: false
       - key: MONGODB_DATABASE
         value: complysense
       - key: MONGODB_DOCUMENTS_COLLECTION
         value: documents
+      - key: SUPABASE_KNOWLEDGE_BUCKET
+        value: knowledge-base
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Main FastAPI Backend Service
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: complysense-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/live
+    envVars:
+      - fromGroup: complysense-shared-env
+      - key: PYTHON_VERSION
+        value: 3.11.8
       - key: MONGODB_CONTROL_LIBRARY_COLLECTION
         value: control_library
+      - key: SECRET_KEY
+        generateValue: true
+      - key: REFRESH_COOKIE_SECURE
+        value: "true"
+      - key: REFRESH_COOKIE_SAMESITE
+        value: none
+      - key: DATABASE_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
-      - key: SUPABASE_KNOWLEDGE_BUCKET
-        value: knowledge-base
-      - key: SECRET_KEY
+      - key: CORS_ORIGINS
         sync: false
-      - key: REFRESH_COOKIE_SECURE
-        value: true
-      - key: REFRESH_COOKIE_SAMESITE
-        value: none
       - key: AI_SERVICE_URL
         sync: false
       - key: AI_ADMIN_REINDEX_KEY
@@ -44,18 +54,30 @@ services:
       - key: SMTP_PASSWORD
         sync: false
 
+  # ----------------------------------------------------------------------------
+  # 2. AI Reasoning & RAG Backend Service
+  # ----------------------------------------------------------------------------
   - type: web
     name: complysense-ai
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
     startCommand: python -m uvicorn ai_service.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health/live
     envVars:
-      - key: ENVIRONMENT
-        value: production
+      - fromGroup: complysense-shared-env
+      - key: PYTHON_VERSION
+        value: 3.11.8
       - key: LOG_LEVEL
         value: INFO
+      - key: DATABASE_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
       - key: CORS_ORIGINS
         sync: false
       - key: GEMINI_API_KEY
@@ -66,21 +88,10 @@ services:
         sync: false
       - key: ADMIN_REINDEX_KEY
         sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: MONGODB_URI
-        sync: false
-      - key: MONGODB_DATABASE
-        value: complysense
-      - key: MONGODB_DOCUMENTS_COLLECTION
-        value: documents
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
-        sync: false
-      - key: SUPABASE_KNOWLEDGE_BUCKET
-        value: knowledge-base
 
+  # ----------------------------------------------------------------------------
+  # 3. Static Vite React Frontend
+  # ----------------------------------------------------------------------------
   - type: web
     name: complysense-frontend
     runtime: static

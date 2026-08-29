@@ -1,6 +1,8 @@
 # Use: FastAPI entry point — lifespan startup/shutdown, exception handlers, router registration.
 # Lifespan: loads/builds indices once and keeps them in memory via HybridRetriever singleton.
 
+import traceback
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -40,9 +42,6 @@ async def value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
 
 async def runtime_error_handler(_: Request, exc: RuntimeError) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": str(exc)})
-
-
-import traceback
 
 
 async def generic_exception_handler(_: Request, exc: Exception) -> JSONResponse:

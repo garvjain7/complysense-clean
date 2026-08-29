@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any
 
@@ -38,6 +37,15 @@ class SaveAssessmentResponsePayload(BaseModel):
     control_id: str
     response_value: AssessmentResponseValue
     score_value: float | None = None
+
+
+def _safe_float(val: Any) -> float | None:
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
 
 
 @router.get("", summary="List assessments for the current institution")
@@ -140,7 +148,12 @@ async def list_assessment_responses(
     user_ctx: Annotated[UserContext, Depends(require_permission(PermissionKey.VIEW_ASSESSMENTS))],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> list[dict[str, Any]]:
-    query = "select response_id, question_id, control_id, response_value, score_value, answered_by, created_at from assessment_responses where assessment_id = :assessment_id and institution_id = :inst_id"
+    query = """
+        select r.response_id, r.question_id, r.control_id, r.response_value, r.score_value, r.answered_by, r.created_at
+        from assessment_responses r
+        join assessments a on a.assessment_id = r.assessment_id
+        where r.assessment_id = :assessment_id and a.institution_id = :inst_id
+    """
     res = await session.execute(text(query), {"assessment_id": assessment_id, "inst_id": user_ctx.institution_id})
     rows = res.mappings().all()
     return [
@@ -149,7 +162,7 @@ async def list_assessment_responses(
             "question_id": r["question_id"],
             "control_id": r["control_id"],
             "response_value": r["response_value"],
-            "score_value": float(r["score_value"]) if r["score_value"] is not None else None,
+            "score_value": _safe_float(r["score_value"]),
             "answered_by": str(r["answered_by"]) if r["answered_by"] else None,
             "created_at": r["created_at"].isoformat() if r["created_at"] else None,
         }
@@ -182,14 +195,14 @@ async def save_assessment_response(
             where response_id = :response_id
             returning response_id
         """
-        res = await session.execute(text(update_query), {"response_id": existing_row["response_id"], "response_value": payload.response_value, "score_value": payload.score_value, "answered_by": user_ctx.user_id})
+        await session.execute(text(update_query), {"response_id": existing_row["response_id"], "response_value": payload.response_value, "score_value": payload.score_value, "answered_by": user_ctx.user_id})
     else:
         insert_query = """
             insert into assessment_responses (assessment_id, question_id, control_id, response_value, score_value, answered_by)
             values (:assessment_id, :question_id, :control_id, :response_value, :score_value, :answered_by)
             returning response_id
         """
-        res = await session.execute(text(insert_query), {"assessment_id": assessment_id, "question_id": payload.question_id, "control_id": payload.control_id, "response_value": payload.response_value, "score_value": payload.score_value, "answered_by": user_ctx.user_id})
+        await session.execute(text(insert_query), {"assessment_id": assessment_id, "question_id": payload.question_id, "control_id": payload.control_id, "response_value": payload.response_value, "score_value": payload.score_value, "answered_by": user_ctx.user_id})
     await AuditLogRepository(session).write(
         institution_id=user_ctx.institution_id,
         user_id=user_ctx.user_id,

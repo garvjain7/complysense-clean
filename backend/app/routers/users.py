@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 from typing import Annotated, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.core.permissions import require_permission
 from app.core.security import hash_password
 from app.database import get_db_session
 from app.domain.rbac import PermissionKey, RoleName
 from app.schemas.auth import UserContext
-from app.services.mail_service import MailService
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -63,14 +61,23 @@ async def list_institution_users(
           from users u
           join roles r on r.role_id = u.role_id
           left join departments d on d.reviewer_user_id = u.user_id
-         where u.institution_id = :inst_id
+         where 1=1
     """
+    is_super_admin = str(user_ctx.active_role_name).lower() == RoleName.SUPER_ADMIN.value.lower()
     scoped_institution_id = (
         institution_id
-        if institution_id and user_ctx.active_role_name == RoleName.SUPER_ADMIN.value
+        if institution_id and is_super_admin
         else user_ctx.institution_id
     )
-    params: dict[str, Any] = {"inst_id": scoped_institution_id}
+    params: dict[str, Any] = {}
+    if scoped_institution_id:
+        query_str += " and u.institution_id = :inst_id"
+        params["inst_id"] = scoped_institution_id
+    elif not is_super_admin:
+        # Non-super-admin always scoped to their own institution
+        query_str += " and u.institution_id = :inst_id"
+        params["inst_id"] = user_ctx.institution_id
+    # else: super admin with no institution_id param → intentionally returns all institutions
 
     if role and role != "All":
         query_str += " and r.role_name = :role_name"

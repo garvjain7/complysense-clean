@@ -2,7 +2,6 @@
 # Used only for writing ai_conversations and audit_logs — does NOT import from app.*
 
 import re
-from typing import Optional
 from collections.abc import AsyncIterator
 
 from ai_service.config import get_ai_settings

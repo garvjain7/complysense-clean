@@ -4,7 +4,6 @@ from sqlalchemy import text
 
 from app.database import AsyncSessionLocal
 from app.repositories.sessions import SessionRepository
-from app.repositories.users import UserRepository
 from app.core.security import create_access_token
 
 
