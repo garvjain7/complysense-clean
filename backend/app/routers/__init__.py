@@ -5,12 +5,15 @@ from fastapi import APIRouter
 from app.config import get_settings
 from app.routers import (
     assessments,
+    assessor,
     audit,
     auth,
     calendar,
+    compliance,
     controls,
     departments,
     evidence,
+    gaps,
     health,
     incidents,
     institutions,
@@ -18,6 +21,8 @@ from app.routers import (
     notifications,
     policies,
     rbac,
+    super_admin,
+    tasks,
     users,
     vendors,
 )
@@ -32,15 +37,24 @@ def build_api_router() -> APIRouter:
     api_router.include_router(institutions.router)
     api_router.include_router(users.router)
     api_router.include_router(departments.router)
+    api_router.include_router(compliance.router)
     api_router.include_router(controls.router)
     api_router.include_router(assessments.router)
+    api_router.include_router(assessor.router)
     api_router.include_router(evidence.router)
+    api_router.include_router(gaps.router)
     api_router.include_router(incidents.router)
     api_router.include_router(vendors.router)
+    api_router.include_router(tasks.router)
     api_router.include_router(policies.router)
     api_router.include_router(audit.router)
     api_router.include_router(notifications.router)
     api_router.include_router(calendar.router)
+    api_router.include_router(super_admin.router)
+
+    from app.routers.ai import build_ai_router
+    api_router.include_router(build_ai_router(), prefix="/ai")
+
     return api_router
 
 

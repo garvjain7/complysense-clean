@@ -1,3 +1,4 @@
-# Use: Package initialization file for the AI microservice.
+# Use: Marks ai_service as a Python package.
 
-__all__ = ["main"]
+# Package version
+__version__ = "2.0.0"

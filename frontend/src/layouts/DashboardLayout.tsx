@@ -1,31 +1,48 @@
-// Use: Main system dashboard shell containing topbar, sidebar, and notification indicators.
+// Use: DashboardLayout — full app shell with responsive sidebar drawer, topbar, mobile header, and content area.
 
-import { NavLink, Outlet } from "react-router-dom";
+import { useState } from "react";
+import { Outlet } from "react-router-dom";
+import { Menu, Shield } from "lucide-react";
+import { Sidebar } from "../components/shared/Sidebar";
+import { Topbar } from "../components/shared/Topbar";
 
-interface DashboardLayoutProps {
-  title: string;
-  nav: Array<{ to: string; label: string }>;
-}
+export function DashboardLayout() {
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-export function DashboardLayout({ title, nav }: DashboardLayoutProps) {
   return (
-    <div className="dashboard-shell">
-      <aside className="sidebar">
-        <div className="brand">ComplySense</div>
-        <nav>
-          {nav.map((item) => (
-            <NavLink key={item.to} to={item.to}>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-      <section className="workspace">
-        <header className="topbar">
-          <h1>{title}</h1>
-        </header>
-        <Outlet />
-      </section>
+    <div className="app-shell">
+      {/* Mobile Top Header */}
+      <header className="mobile-header">
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="sidebar-brand-logo" style={{ width: 28, height: 28 }}>
+            <Shield size={16} />
+          </div>
+          <span style={{ fontWeight: 700, fontSize: 15 }}>ComplySense</span>
+        </div>
+        <button
+          className="mobile-nav-toggle"
+          onClick={() => setMobileOpen((prev) => !prev)}
+          aria-label="Toggle navigation menu"
+        >
+          <Menu size={20} />
+        </button>
+      </header>
+
+      {/* Backdrop for mobile drawer */}
+      <div
+        className={`sidebar-backdrop ${mobileOpen ? "show" : ""}`}
+        onClick={() => setMobileOpen(false)}
+      />
+
+      {/* Responsive Sidebar */}
+      <Sidebar mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
+
+      <div className="main-content-wrapper">
+        <Topbar />
+        <main className="main-content">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

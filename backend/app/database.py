@@ -12,11 +12,33 @@ settings = get_settings()
 engine: AsyncEngine = create_async_engine(
     str(settings.database_url),
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=2,
+    max_overflow=10,
 )
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+
+async def initialize_database_schema() -> None:
+    async with engine.begin() as connection:
+        await connection.execute(
+            text(
+                """
+                create table if not exists notifications (
+                    notification_id text primary key,
+                    institution_id text not null,
+                    user_id text not null,
+                    title text not null,
+                    message text,
+                    notification_type text,
+                    related_entity_type text,
+                    related_entity_id text,
+                    is_read boolean not null default false,
+                    created_at timestamptz not null default now()
+                )
+                """
+            )
+        )
 
 
 async def get_db_session() -> AsyncIterator[AsyncSession]:

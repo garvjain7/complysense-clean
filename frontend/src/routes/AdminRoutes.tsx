@@ -2,28 +2,30 @@
 
 import type { RouteObject } from "react-router-dom";
 import { DashboardLayout } from "../layouts/DashboardLayout";
+import { RoleRoute } from "./RoleRoute";
 import Calendar from "../pages/institution-admin/Calendar";
 import Dashboard from "../pages/institution-admin/Dashboard";
 import Departments from "../pages/institution-admin/Departments";
 import Reports from "../pages/institution-admin/Reports";
 import Users from "../pages/institution-admin/Users";
+import Notifications from "../pages/compliance/Notifications";
 
-const nav = [
-  { to: "/admin/dashboard", label: "Dashboard" },
-  { to: "/admin/departments", label: "Departments" },
-  { to: "/admin/users", label: "Users" },
-  { to: "/admin/calendar", label: "Calendar" },
-  { to: "/admin/reports", label: "Reports" }
-];
+import AuditTrail from "../pages/institution-admin/AuditTrail";
 
 export const adminRoutes: RouteObject = {
   path: "/admin",
-  element: <DashboardLayout title="Institution Admin" nav={nav} />,
+  element: (
+    <RoleRoute allowedRoles={["Institution Admin"]}>
+      <DashboardLayout />
+    </RoleRoute>
+  ),
   children: [
     { path: "dashboard", element: <Dashboard /> },
     { path: "departments", element: <Departments /> },
     { path: "users", element: <Users /> },
     { path: "calendar", element: <Calendar /> },
-    { path: "reports", element: <Reports /> }
+    { path: "reports", element: <Reports /> },
+    { path: "audit-trail", element: <AuditTrail /> },
+    { path: "notifications", element: <Notifications /> }
   ]
 };

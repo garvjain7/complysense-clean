@@ -24,11 +24,12 @@ class UserRepository:
         result = await self.session.execute(
             text(
                 """
-                select u.user_id, u.institution_id, u.role_id, r.role_name,
+                select u.user_id, u.institution_id, i.institution_name, u.role_id, r.role_name,
                        u.full_name, u.email, u.password_hash, u.is_active,
                        u.failed_login_attempts, u.blocked_until
                   from users u
                   join roles r on r.role_id = u.role_id
+                  left join institutions i on i.institution_id = u.institution_id
                  where lower(u.email) = lower(:email)
                    and u.is_active = true
                  limit 1
@@ -44,11 +45,12 @@ class UserRepository:
         result = await self.session.execute(
             text(
                 """
-                select u.user_id, u.institution_id, u.role_id, r.role_name,
+                select u.user_id, u.institution_id, i.institution_name, u.role_id, r.role_name,
                        u.full_name, u.email, u.phone, u.designation,
                        u.is_active, u.created_at, u.updated_at
                   from users u
                   join roles r on r.role_id = u.role_id
+                  left join institutions i on i.institution_id = u.institution_id
                  where u.user_id = :user_id
                  limit 1
                 """
@@ -111,20 +113,25 @@ class UserRepository:
         phone: str | None = None,
         designation: str | None = None,
     ) -> dict[str, Any]:
-        """Insert a new user and return the full row."""
+        """Insert a new user and return the full row joined with role_name."""
         result = await self.session.execute(
             text(
                 """
-                insert into users (
-                    institution_id, role_id, full_name, email, password_hash,
-                    phone, designation
+                with new_user as (
+                    insert into users (
+                        institution_id, role_id, full_name, email, password_hash,
+                        phone, designation
+                    )
+                    values (
+                        :institution_id, :role_id, :full_name, :email, :password_hash,
+                        :phone, :designation
+                    )
+                    returning user_id, institution_id, role_id, full_name, email,
+                              phone, designation, is_active, created_at
                 )
-                values (
-                    :institution_id, :role_id, :full_name, :email, :password_hash,
-                    :phone, :designation
-                )
-                returning user_id, institution_id, role_id, full_name, email,
-                          phone, designation, is_active, created_at
+                select nu.*, r.role_name
+                  from new_user nu
+                  join roles r on r.role_id = nu.role_id
                 """
             ),
             {
@@ -232,6 +239,9 @@ class UserRepository:
 
     async def block_user(self, user_id: str, *, blocked_until: datetime) -> None:
         """Set blocked_until to block the user until the specified datetime."""
+        if blocked_until and blocked_until.tzinfo is not None:
+            from datetime import UTC
+            blocked_until = blocked_until.astimezone(UTC).replace(tzinfo=None)
         await self.session.execute(
             text(
                 """
@@ -267,6 +277,9 @@ class UserRepository:
         self, user_id: str, token: str, expires_at: datetime
     ) -> str:
         """Insert a password-reset token and return the token_id."""
+        if expires_at and expires_at.tzinfo is not None:
+            from datetime import UTC
+            expires_at = expires_at.astimezone(UTC).replace(tzinfo=None)
         result = await self.session.execute(
             text(
                 """
@@ -313,3 +326,22 @@ class UserRepository:
             ),
             {"user_id": user_id},
         )
+
+    async def validate_reset_token(self, token: str) -> dict[str, Any] | None:
+        """Find a valid (unused, non-expired) reset token without marking it used."""
+        result = await self.session.execute(
+            text(
+                """
+                select token_id, pr.user_id, expires_at, u.email
+                  from password_reset_tokens pr
+                  join users u on u.user_id = pr.user_id
+                 where token      = :token
+                   and used       = false
+                   and expires_at > current_timestamp
+                 limit 1
+                """
+            ),
+            {"token": token},
+        )
+        row = result.mappings().first()
+        return dict(row) if row else None

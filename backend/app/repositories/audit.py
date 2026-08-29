@@ -25,14 +25,10 @@ class AuditLogRepository:
         action_details: dict[str, Any] | None = None,
         ip_address: str | None = None,
     ) -> None:
-        """Insert a row into audit_logs.
+        """Insert a row into audit_logs."""
+        details = action_details or {}
 
-        action_type examples (auth domain):
-            login, logout, register, failed_login, user_blocked,
-            password_change, password_reset_requested, refresh_token,
-            account_status_change
-        """
-        details_json = json.dumps(action_details or {})
+        details_json = json.dumps(details)
         await self.session.execute(
             text(
                 """

@@ -1,0 +1,107 @@
+envVarGroups:
+  - name: complysense-shared-env
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: MONGODB_DATABASE
+        value: complysense
+      - key: MONGODB_DOCUMENTS_COLLECTION
+        value: documents
+      - key: SUPABASE_KNOWLEDGE_BUCKET
+        value: knowledge-base
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Main FastAPI Backend Service
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: complysense-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/live
+    envVars:
+      - fromGroup: complysense-shared-env
+      - key: PYTHON_VERSION
+        value: 3.11.8
+      - key: MONGODB_CONTROL_LIBRARY_COLLECTION
+        value: control_library
+      - key: SECRET_KEY
+        generateValue: true
+      - key: REFRESH_COOKIE_SECURE
+        value: "true"
+      - key: REFRESH_COOKIE_SAMESITE
+        value: none
+      - key: DATABASE_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: AI_SERVICE_URL
+        sync: false
+      - key: AI_ADMIN_REINDEX_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+
+  # ----------------------------------------------------------------------------
+  # 2. AI Reasoning & RAG Backend Service
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: complysense-ai
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+    startCommand: python -m uvicorn ai_service.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/live
+    envVars:
+      - fromGroup: complysense-shared-env
+      - key: PYTHON_VERSION
+        value: 3.11.8
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DATABASE_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: gemini-2.5-flash-lite
+      - key: MAIN_API_URL
+        sync: false
+      - key: ADMIN_REINDEX_KEY
+        sync: false
+
+  # ----------------------------------------------------------------------------
+  # 3. Static Vite React Frontend
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: complysense-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false

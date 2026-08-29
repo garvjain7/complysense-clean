@@ -2,6 +2,7 @@
 
 import type { RouteObject } from "react-router-dom";
 import { DashboardLayout } from "../layouts/DashboardLayout";
+import { RoleRoute } from "./RoleRoute";
 import AssessmentRunner from "../pages/compliance/AssessmentRunner";
 import Assessments from "../pages/compliance/Assessments";
 import ControlDetail from "../pages/compliance/ControlDetail";
@@ -12,21 +13,15 @@ import Gaps from "../pages/compliance/Gaps";
 import Notifications from "../pages/compliance/Notifications";
 import Policies from "../pages/compliance/Policies";
 import Tasks from "../pages/compliance/Tasks";
-
-const nav = [
-  { to: "/compliance/dashboard", label: "Dashboard" },
-  { to: "/compliance/controls", label: "Controls" },
-  { to: "/compliance/gaps", label: "Gaps" },
-  { to: "/compliance/evidence-queue", label: "Evidence Queue" },
-  { to: "/compliance/assessments", label: "Assessments" },
-  { to: "/compliance/policies", label: "Policies" },
-  { to: "/compliance/tasks", label: "Tasks" },
-  { to: "/compliance/notifications", label: "Notifications" }
-];
+import Chat from "../pages/compliance/Chat";
 
 export const complianceRoutes: RouteObject = {
   path: "/compliance",
-  element: <DashboardLayout title="Compliance Officer" nav={nav} />,
+  element: (
+    <RoleRoute allowedRoles={["Compliance Officer"]}>
+      <DashboardLayout />
+    </RoleRoute>
+  ),
   children: [
     { path: "dashboard", element: <Dashboard /> },
     { path: "controls", element: <Controls /> },
@@ -37,6 +32,7 @@ export const complianceRoutes: RouteObject = {
     { path: "assessments/:id", element: <AssessmentRunner /> },
     { path: "policies", element: <Policies /> },
     { path: "tasks", element: <Tasks /> },
-    { path: "notifications", element: <Notifications /> }
+    { path: "notifications", element: <Notifications /> },
+    { path: "chat", element: <Chat /> }
   ]
 };
