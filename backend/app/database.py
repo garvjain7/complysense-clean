@@ -2,15 +2,26 @@
 
 from collections.abc import AsyncIterator
 
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.sql import text
 
 from app.config import get_settings
 
+
+def _build_async_database_url(raw_url: str) -> URL:
+    url = make_url(raw_url)
+    query = dict(url.query)
+    query.pop("sslmode", None)
+    query.pop("channel_binding", None)
+    return url.set(drivername="postgresql+asyncpg", query=query)
+
+
 settings = get_settings()
 
 engine: AsyncEngine = create_async_engine(
-    str(settings.database_url),
+    _build_async_database_url(str(settings.database_url)),
+    connect_args={"ssl": "require"},
     pool_pre_ping=True,
     pool_size=2,
     max_overflow=10,

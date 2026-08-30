@@ -55,8 +55,15 @@ export async function refreshSession(): Promise<LoginResponse> {
   return res.data;
 }
 
-export async function forgotPassword(email: string): Promise<void> {
-  await api.post("/api/v1/auth/forgot-password", { email });
+export interface ForgotPasswordResponse {
+  email_sent: boolean;
+  reset_url: string | null;
+  message: string;
+}
+
+export async function forgotPassword(email: string): Promise<ForgotPasswordResponse> {
+  const res = await api.post<ForgotPasswordResponse>("/api/v1/auth/forgot-password", { email });
+  return res.data;
 }
 
 export async function validateResetToken(token: string): Promise<ValidateTokenResponse> {

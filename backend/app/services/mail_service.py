@@ -35,7 +35,11 @@ class MailService:
 
     async def send_message(self, *, to_email: str, subject: str, template_key: str, context: dict[str, Any]) -> bool:
         import asyncio
-        return await asyncio.to_thread(self._send_message_sync, to_email=to_email, subject=subject, template_key=template_key, context=context)
+        try:
+            return await asyncio.to_thread(self._send_message_sync, to_email=to_email, subject=subject, template_key=template_key, context=context)
+        except Exception as exc:
+            logger.error("mail_service.async_error: %s", exc)
+            return False
 
     def _send_message_sync(self, to_email: str, subject: str, template_key: str, context: dict[str, Any]) -> bool:
         if not self._is_configured:
@@ -52,24 +56,36 @@ class MailService:
             template_key=template_key,
             context=context,
         )
-        try:
-            with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT, timeout=10) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(self._smtp_user, self._smtp_password)  # type: ignore[arg-type]
-                server.sendmail(self._smtp_user, to_email, message.as_string())  # type: ignore[arg-type]
-            logger.info("mail_service.sent: to=%s template=%s", to_email, template_key)
-            return True
-        except smtplib.SMTPAuthenticationError:
-            logger.error(
-                "mail_service.auth_error: Gmail rejected credentials — "
-                "check SMTP_USER and SMTP_PASSWORD in .env"
-            )
-        except smtplib.SMTPException as exc:
-            logger.error("mail_service.smtp_error: %s", exc)
-        except OSError as exc:
-            logger.error("mail_service.network_error: %s", exc)
+
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT, timeout=10) as server:
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                    server.login(self._smtp_user, self._smtp_password)  # type: ignore[arg-type]
+                    server.sendmail(self._smtp_user, to_email, message.as_string())  # type: ignore[arg-type]
+                logger.info("mail_service.sent: to=%s template=%s (attempt %d/%d)", to_email, template_key, attempt, max_retries)
+                return True
+            except Exception as exc:
+                logger.warning(
+                    "mail_service.attempt_failed: attempt %d/%d for to=%s template=%s error=%s",
+                    attempt,
+                    max_retries,
+                    to_email,
+                    template_key,
+                    exc,
+                )
+                if attempt < max_retries:
+                    import time
+                    time.sleep(1)
+
+        logger.error(
+            "mail_service.failed_all_retries: Mail service unavailable after %d retries for to=%s",
+            max_retries,
+            to_email,
+        )
         return False
 
     async def send_password_reset(self, *, to_email: str, reset_url: str) -> bool:

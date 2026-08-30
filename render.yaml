@@ -93,7 +93,7 @@ services:
   # 3. Static Vite React Frontend
   # ----------------------------------------------------------------------------
   - type: web
-    name: complysense-frontend
+    name: complysense
     runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
