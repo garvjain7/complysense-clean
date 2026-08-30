@@ -1,14 +1,17 @@
 // Use: Forgot Password page — always shows success state to prevent user enumeration.
 
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { Mail, CheckCircle, ArrowLeft, RefreshCw } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Mail, CheckCircle, ArrowLeft, RefreshCw, AlertTriangle } from "lucide-react";
 import { forgotPassword } from "../../lib/auth";
 
 export default function ForgotPassword() {
+  const navigate = useNavigate();
   const [email, setEmail]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [submitted, setSubmitted]   = useState(false);
+  const [mailUnavailable, setMailUnavailable] = useState(false);
+  const [noticeMessage, setNoticeMessage]     = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
 
   // Resend countdown
@@ -23,9 +26,28 @@ export default function ForgotPassword() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setMailUnavailable(false);
+    setNoticeMessage("");
+
     try {
-      await forgotPassword(email);
-    } catch { /* Intentionally swallow — always show success */ } finally {
+      const res = await forgotPassword(email);
+      if (res && res.email_sent === false) {
+        setMailUnavailable(true);
+        setNoticeMessage(res.message || "Mail service is currently unavailable at the moment.");
+        if (res.reset_url) {
+          // Automatic fallback redirect after 2s if mail service fails
+          const match = res.reset_url.match(/\/reset-password\/([^/]+)$/);
+          if (match && match[1]) {
+            setTimeout(() => {
+              navigate(`/reset-password/${match[1]}`);
+            }, 2500);
+          }
+        }
+      }
+    } catch {
+      setMailUnavailable(true);
+      setNoticeMessage("Mail service is currently unavailable at the moment.");
+    } finally {
       setLoading(false);
       setSubmitted(true);
       setResendCooldown(60);
@@ -35,9 +57,17 @@ export default function ForgotPassword() {
   async function handleResend() {
     if (resendCooldown > 0) return;
     setLoading(true);
+    setMailUnavailable(false);
     try {
-      await forgotPassword(email);
-    } catch { /* swallow */ } finally {
+      const res = await forgotPassword(email);
+      if (res && res.email_sent === false) {
+        setMailUnavailable(true);
+        setNoticeMessage(res.message || "Mail service is currently unavailable at the moment.");
+      }
+    } catch {
+      setMailUnavailable(true);
+      setNoticeMessage("Mail service is currently unavailable at the moment.");
+    } finally {
       setLoading(false);
       setResendCooldown(60);
     }
@@ -47,13 +77,27 @@ export default function ForgotPassword() {
     return (
       <div className="auth-form-box" id="forgot-password-success">
         <div className="success-state">
-          <div className="success-icon-circle">
-            <CheckCircle size={36} />
-          </div>
-          <h1 className="success-title">Check your email</h1>
+          {mailUnavailable ? (
+            <div className="success-icon-circle" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
+              <AlertTriangle size={36} />
+            </div>
+          ) : (
+            <div className="success-icon-circle">
+              <CheckCircle size={36} />
+            </div>
+          )}
+          <h1 className="success-title">{mailUnavailable ? "Mail Service Notice" : "Check your email"}</h1>
           <p className="success-desc">
-            If an account exists for <strong>{email}</strong>, we sent a password
-            reset link. The link expires in 5 minutes.
+            {mailUnavailable ? (
+              <span style={{ color: "#d97706", fontWeight: 500 }}>
+                {noticeMessage || "Mail service is currently unavailable at the moment."}
+              </span>
+            ) : (
+              <>
+                If an account exists for <strong>{email}</strong>, we sent a password
+                reset link. The link expires in 5 minutes.
+              </>
+            )}
           </p>
 
           <div style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 10 }}>

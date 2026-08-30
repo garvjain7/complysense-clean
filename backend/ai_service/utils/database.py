@@ -1,8 +1,9 @@
 # Use: Decoupled async PostgreSQL client for the AI service.
 # Used only for writing ai_conversations and audit_logs — does NOT import from app.*
 
-import re
 from collections.abc import AsyncIterator
+
+from sqlalchemy.engine import URL, make_url
 
 from ai_service.config import get_ai_settings
 from ai_service.utils.logger import StructuredLogger
@@ -13,12 +14,16 @@ _engine = None
 _session_factory = None
 
 
-def _build_async_url(raw_url: str) -> str:
+def _build_async_url(raw_url: str) -> URL:
     """
-    SQLAlchemy async engine requires postgresql+asyncpg:// scheme.
-    Convert if the env var was set with the plain postgresql:// scheme.
+    Transforms plain postgresql:// URLs to postgresql+asyncpg:// and strips
+    unsupported query parameters like sslmode and channel_binding.
     """
-    return re.sub(r"^postgresql(\+\w+)?://", "postgresql+asyncpg://", raw_url)
+    url = make_url(raw_url)
+    query = dict(url.query)
+    query.pop("sslmode", None)
+    query.pop("channel_binding", None)
+    return url.set(drivername="postgresql+asyncpg", query=query)
 
 
 def get_async_engine():
@@ -40,9 +45,11 @@ def get_async_engine():
 
     try:
         from sqlalchemy.ext.asyncio import create_async_engine
+
         async_url = _build_async_url(settings.database_url)
         _engine = create_async_engine(
             async_url,
+            connect_args={"ssl": "require"},
             pool_pre_ping=True,
             pool_size=3,
             max_overflow=5,

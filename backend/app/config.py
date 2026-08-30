@@ -50,7 +50,6 @@ class Settings(BaseSettings):
 
     main_api_url: str = "http://127.0.0.1:8000"
     ai_service_url: str = "http://127.0.0.1:8001"
-    openai_api_key: str | None = None
 
     # Optional: must match ADMIN_REINDEX_KEY env var on the AI service.
     # Leave blank to leave reindex endpoint disabled on the AI side.
