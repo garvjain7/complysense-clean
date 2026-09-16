@@ -48,9 +48,10 @@ export function Topbar() {
   const [exitingRole, setExitingRole] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  // ── Notification polling every 30 s ────────────────────────────────────────
+  // ── Notification polling every 30 s (skipped when tab is hidden) ──────────
   useEffect(() => {
     async function poll() {
+      if (document.hidden) return; // skip if user switched to another tab
       try {
         const res = await api.get("/api/v1/notifications", {
           params: { limit: 10, unread: true },
